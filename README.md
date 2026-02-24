@@ -102,6 +102,20 @@ post, err := client.Posts.PublishDraft(ctx, "post-id", nil)
 
 // Delete a post
 result, err := client.Posts.Delete(ctx, "post-id", nil)
+
+// Get stats for posts
+from := "2026-02-01T00:00:00Z"
+to := "2026-02-24T00:00:00Z"
+stats, err := client.Posts.Stats(ctx, []string{"post-id-1", "post-id-2"}, &postproxy.PostStatsOptions{
+	Profiles: []string{"instagram", "twitter"},
+	From:     &from,
+	To:       &to,
+})
+for postID, postStats := range stats.Data {
+	for _, plat := range postStats.Platforms {
+		fmt.Printf("%s on %s: %d records\n", postID, plat.Platform, len(plat.Records))
+	}
+}
 ```
 
 ### Profiles

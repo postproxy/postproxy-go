@@ -157,6 +157,36 @@ type PlatformParams struct {
 	Twitter   *TwitterParams   `json:"twitter,omitempty"`
 }
 
+// PostStatsOptions contains options for retrieving post stats.
+type PostStatsOptions struct {
+	Profiles []string
+	From     *string
+	To       *string
+}
+
+// StatsResponse is the response from the post stats endpoint.
+type StatsResponse struct {
+	Data map[string]PostStats `json:"data"`
+}
+
+// PostStats contains stats for a single post across platforms.
+type PostStats struct {
+	Platforms []PlatformStats `json:"platforms"`
+}
+
+// PlatformStats contains stats records for a single platform.
+type PlatformStats struct {
+	ProfileID string        `json:"profile_id"`
+	Platform  Platform      `json:"platform"`
+	Records   []StatsRecord `json:"records"`
+}
+
+// StatsRecord is a single stats snapshot at a point in time.
+type StatsRecord struct {
+	Stats      map[string]any `json:"stats"`
+	RecordedAt string         `json:"recorded_at"`
+}
+
 // RequestOptions contains common options for API requests.
 type RequestOptions struct {
 	ProfileGroupID *string

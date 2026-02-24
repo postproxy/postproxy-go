@@ -147,6 +147,35 @@ func (s *PostsService) Delete(ctx context.Context, id string, opts *RequestOptio
 	return &result, nil
 }
 
+// Stats retrieves stats snapshots for one or more posts.
+func (s *PostsService) Stats(ctx context.Context, postIDs []string, opts *PostStatsOptions) (*StatsResponse, error) {
+	params := url.Values{}
+	params.Set("post_ids", strings.Join(postIDs, ","))
+
+	if opts != nil {
+		if len(opts.Profiles) > 0 {
+			params.Set("profiles", strings.Join(opts.Profiles, ","))
+		}
+		if opts.From != nil {
+			params.Set("from", *opts.From)
+		}
+		if opts.To != nil {
+			params.Set("to", *opts.To)
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/posts/stats", withParams(params))
+	if err != nil {
+		return nil, err
+	}
+
+	var result StatsResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (s *PostsService) buildJSON(body string, profiles []string, opts *PostCreateOptions) []requestOption {
 	payload := map[string]any{
 		"post": map[string]any{
