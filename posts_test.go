@@ -275,6 +275,138 @@ func TestPostsPublishDraft(t *testing.T) {
 	}
 }
 
+func TestPostsStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/posts/stats" {
+			t.Errorf("expected path /api/posts/stats, got %s", r.URL.Path)
+		}
+
+		q := r.URL.Query()
+		if q.Get("post_ids") != "abc123,def456" {
+			t.Errorf("expected post_ids=abc123,def456, got %s", q.Get("post_ids"))
+		}
+		if q.Get("profiles") != "instagram,twitter" {
+			t.Errorf("expected profiles=instagram,twitter, got %s", q.Get("profiles"))
+		}
+		if q.Get("from") != "2026-02-01T00:00:00Z" {
+			t.Errorf("expected from=2026-02-01T00:00:00Z, got %s", q.Get("from"))
+		}
+		if q.Get("to") != "2026-02-24T00:00:00Z" {
+			t.Errorf("expected to=2026-02-24T00:00:00Z, got %s", q.Get("to"))
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"abc123": map[string]any{
+					"platforms": []map[string]any{
+						{
+							"profile_id": "prof_abc",
+							"platform":   "instagram",
+							"records": []map[string]any{
+								{
+									"stats":       map[string]any{"impressions": 1200, "likes": 85},
+									"recorded_at": "2026-02-20T12:00:00Z",
+								},
+								{
+									"stats":       map[string]any{"impressions": 1523, "likes": 102},
+									"recorded_at": "2026-02-21T04:00:00Z",
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	from := "2026-02-01T00:00:00Z"
+	to := "2026-02-24T00:00:00Z"
+	result, err := c.Posts.Stats(context.Background(), []string{"abc123", "def456"}, &PostStatsOptions{
+		Profiles: []string{"instagram", "twitter"},
+		From:     &from,
+		To:       &to,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	postStats, ok := result.Data["abc123"]
+	if !ok {
+		t.Fatal("expected data for abc123")
+	}
+	if len(postStats.Platforms) != 1 {
+		t.Fatalf("expected 1 platform, got %d", len(postStats.Platforms))
+	}
+	plat := postStats.Platforms[0]
+	if plat.ProfileID != "prof_abc" {
+		t.Errorf("expected profile_id %q, got %q", "prof_abc", plat.ProfileID)
+	}
+	if plat.Platform != PlatformInstagram {
+		t.Errorf("expected platform %q, got %q", PlatformInstagram, plat.Platform)
+	}
+	if len(plat.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(plat.Records))
+	}
+	if plat.Records[0].RecordedAt != "2026-02-20T12:00:00Z" {
+		t.Errorf("expected recorded_at %q, got %q", "2026-02-20T12:00:00Z", plat.Records[0].RecordedAt)
+	}
+}
+
+func TestPostsStats_NoOptions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("post_ids") != "abc123" {
+			t.Errorf("expected post_ids=abc123, got %s", q.Get("post_ids"))
+		}
+		if q.Get("profiles") != "" {
+			t.Errorf("expected no profiles param, got %s", q.Get("profiles"))
+		}
+		if q.Get("from") != "" {
+			t.Errorf("expected no from param, got %s", q.Get("from"))
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{}})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	result, err := c.Posts.Stats(context.Background(), []string{"abc123"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Data == nil {
+		t.Fatal("expected non-nil data")
+	}
+}
+
+func TestPostsStats_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":  400,
+			"error":   "Bad Request",
+			"message": "param is missing or the value is empty: post_ids",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Posts.Stats(context.Background(), []string{}, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsBadRequestError(err) {
+		t.Errorf("expected bad request error, got %v", err)
+	}
+}
+
 func TestPostsDelete(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
