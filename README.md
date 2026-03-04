@@ -97,6 +97,17 @@ post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postpr
 	},
 })
 
+// Create a thread post
+post, err := client.Posts.Create(ctx, "Thread starts here", []string{"profile-id"}, &postproxy.PostCreateOptions{
+	Thread: []postproxy.ThreadChildInput{
+		{Body: "Second post in the thread"},
+		{Body: "Third with media", Media: []string{"https://example.com/img.jpg"}},
+	},
+})
+for _, child := range post.Thread {
+	fmt.Printf("%s: %s\n", child.ID, child.Body)
+}
+
 // Publish a draft
 post, err := client.Posts.PublishDraft(ctx, "post-id", nil)
 
@@ -116,6 +127,50 @@ for postID, postStats := range stats.Data {
 		fmt.Printf("%s on %s: %d records\n", postID, plat.Platform, len(plat.Records))
 	}
 }
+```
+
+### Webhooks
+
+```go
+// List webhooks
+webhooks, err := client.Webhooks.List(ctx)
+
+// Get a webhook
+webhook, err := client.Webhooks.Get(ctx, "wh-id")
+
+// Create a webhook
+webhook, err := client.Webhooks.Create(ctx, "https://example.com/webhook", []string{"post.published", "post.failed"}, &postproxy.WebhookCreateOptions{
+	Description: strPtr("My webhook"),
+})
+fmt.Println(webhook.ID, webhook.Secret)
+
+// Update a webhook
+enabled := false
+webhook, err := client.Webhooks.Update(ctx, "wh-id", &postproxy.WebhookUpdateOptions{
+	Events:  []string{"post.published"},
+	Enabled: &enabled,
+})
+
+// Delete a webhook
+result, err := client.Webhooks.Delete(ctx, "wh-id")
+
+// List deliveries
+deliveries, err := client.Webhooks.Deliveries(ctx, "wh-id", nil)
+for _, d := range deliveries.Data {
+	fmt.Printf("%s: %v\n", d.EventType, d.Success)
+}
+```
+
+#### Signature verification
+
+Verify incoming webhook signatures using HMAC-SHA256:
+
+```go
+valid := postproxy.VerifyWebhookSignature(
+	string(requestBody),
+	r.Header.Get("X-PostProxy-Signature"),
+	"whsec_...",
+)
 ```
 
 ### Profiles

@@ -34,6 +34,30 @@ type PlatformResult struct {
 	Insights    *Insights          `json:"insights"`
 }
 
+// Media represents a media attachment on a post.
+type Media struct {
+	ID           string      `json:"id"`
+	Status       MediaStatus `json:"status"`
+	ErrorMessage *string     `json:"error_message"`
+	ContentType  string      `json:"content_type"`
+	SourceURL    *string     `json:"source_url"`
+	URL          *string     `json:"url"`
+}
+
+// ThreadChild represents a child post in a thread.
+type ThreadChild struct {
+	ID    string  `json:"id"`
+	Body  string  `json:"body"`
+	Media []Media `json:"media"`
+}
+
+// ThreadChildInput represents a thread child in a create request.
+type ThreadChildInput struct {
+	Body       string   `json:"body"`
+	Media      []string `json:"media,omitempty"`
+	MediaFiles []string `json:"-"`
+}
+
 // Post represents a social media post.
 type Post struct {
 	ID          string           `json:"id"`
@@ -41,7 +65,9 @@ type Post struct {
 	Status      PostStatus       `json:"status"`
 	ScheduledAt *string          `json:"scheduled_at"`
 	CreatedAt   string           `json:"created_at"`
+	Media       []Media          `json:"media"`
 	Platforms   []PlatformResult `json:"platforms"`
+	Thread      []ThreadChild    `json:"thread"`
 }
 
 // Placement represents a placement option for a profile.
@@ -123,6 +149,7 @@ type YouTubeParams struct {
 	Title         *string         `json:"title,omitempty"`
 	PrivacyStatus *YouTubePrivacy `json:"privacy_status,omitempty"`
 	CoverURL      *string         `json:"cover_url,omitempty"`
+	MadeForKids   *bool           `json:"made_for_kids,omitempty"`
 }
 
 // PinterestParams contains Pinterest-specific post parameters.
@@ -155,6 +182,49 @@ type PlatformParams struct {
 	Pinterest *PinterestParams `json:"pinterest,omitempty"`
 	Threads   *ThreadsParams   `json:"threads,omitempty"`
 	Twitter   *TwitterParams   `json:"twitter,omitempty"`
+}
+
+// Webhook represents a webhook subscription.
+type Webhook struct {
+	ID          string   `json:"id"`
+	URL         string   `json:"url"`
+	Events      []string `json:"events"`
+	Enabled     bool     `json:"enabled"`
+	Description *string  `json:"description"`
+	Secret      *string  `json:"secret,omitempty"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+// WebhookDelivery represents a webhook delivery attempt.
+type WebhookDelivery struct {
+	ID             string  `json:"id"`
+	EventID        string  `json:"event_id"`
+	EventType      string  `json:"event_type"`
+	ResponseStatus *int    `json:"response_status"`
+	AttemptNumber  int     `json:"attempt_number"`
+	Success        bool    `json:"success"`
+	AttemptedAt    string  `json:"attempted_at"`
+	CreatedAt      string  `json:"created_at"`
+}
+
+// WebhookCreateOptions contains options for creating a webhook.
+type WebhookCreateOptions struct {
+	Description *string
+}
+
+// WebhookUpdateOptions contains options for updating a webhook.
+type WebhookUpdateOptions struct {
+	URL         *string
+	Events      []string
+	Enabled     *bool
+	Description *string
+}
+
+// WebhookDeliveryListOptions contains options for listing webhook deliveries.
+type WebhookDeliveryListOptions struct {
+	Page    *int
+	PerPage *int
 }
 
 // PostStatsOptions contains options for retrieving post stats.
@@ -207,6 +277,7 @@ type PostCreateOptions struct {
 	Media          []string
 	MediaFiles     []string
 	Platforms      *PlatformParams
+	Thread         []ThreadChildInput
 	ScheduledAt    *string
 	Draft          *bool
 	ProfileGroupID *string
