@@ -21,8 +21,18 @@ const (
 	PostStatusPending    PostStatus = "pending"
 	PostStatusDraft      PostStatus = "draft"
 	PostStatusProcessing PostStatus = "processing"
-	PostStatusProcessed  PostStatus = "processed"
-	PostStatusScheduled  PostStatus = "scheduled"
+	PostStatusProcessed              PostStatus = "processed"
+	PostStatusScheduled              PostStatus = "scheduled"
+	PostStatusMediaProcessingFailed  PostStatus = "media_processing_failed"
+)
+
+// MediaStatus represents the processing status of a media attachment.
+type MediaStatus string
+
+const (
+	MediaStatusPending   MediaStatus = "pending"
+	MediaStatusProcessed MediaStatus = "processed"
+	MediaStatusFailed    MediaStatus = "failed"
 )
 
 // PlatformPostStatus represents the status of a post on a specific platform.

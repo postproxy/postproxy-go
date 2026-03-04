@@ -70,4 +70,17 @@ func main() {
 		log.Fatalf("failed to create draft: %v", err)
 	}
 	fmt.Printf("Created draft: %s\n", post.ID)
+
+	// Create a thread post.
+	post, err = client.Posts.Create(ctx, "Here's a thread about PostProxy 🧵", []string{igProfileID}, &postproxy.PostCreateOptions{
+		Thread: []postproxy.ThreadChildInput{
+			{Body: "First, connect your social accounts."},
+			{Body: "Then, create posts with media!", Media: []string{"https://example.com/demo.jpg"}},
+			{Body: "Finally, schedule or publish instantly."},
+		},
+	})
+	if err != nil {
+		log.Fatalf("failed to create thread: %v", err)
+	}
+	fmt.Printf("Created thread: %s (%d children)\n", post.ID, len(post.Thread))
 }

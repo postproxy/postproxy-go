@@ -430,3 +430,165 @@ func TestPostsDelete(t *testing.T) {
 		t.Error("expected deleted=true")
 	}
 }
+
+func TestPostsCreate_WithThread(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+
+		thread, ok := payload["thread"].([]any)
+		if !ok || len(thread) != 2 {
+			t.Errorf("expected thread with 2 items, got %v", payload["thread"])
+		}
+		first := thread[0].(map[string]any)
+		if first["body"] != "Reply 1" {
+			t.Errorf("expected first thread body 'Reply 1', got %v", first["body"])
+		}
+		second := thread[1].(map[string]any)
+		media := second["media"].([]any)
+		if len(media) != 1 {
+			t.Errorf("expected 1 media in second thread, got %d", len(media))
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(Post{
+			ID:   "post-thread",
+			Body: "Main",
+			Thread: []ThreadChild{
+				{ID: "t-1", Body: "Reply 1"},
+				{ID: "t-2", Body: "Reply 2"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	post, err := c.Posts.Create(context.Background(), "Main", []string{"prof-1"}, &PostCreateOptions{
+		Thread: []ThreadChildInput{
+			{Body: "Reply 1"},
+			{Body: "Reply 2", Media: []string{"https://example.com/img.jpg"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(post.Thread) != 2 {
+		t.Fatalf("expected 2 thread children, got %d", len(post.Thread))
+	}
+	if post.Thread[0].Body != "Reply 1" {
+		t.Errorf("expected thread body 'Reply 1', got %q", post.Thread[0].Body)
+	}
+}
+
+func TestPostsCreate_ThreadWithMediaFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "thread-img.png")
+	if err := os.WriteFile(tmpFile, []byte("fake png data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct := r.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "multipart/form-data") {
+			t.Errorf("expected multipart/form-data, got %s", ct)
+		}
+
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+
+		if r.FormValue("post[body]") != "Thread main" {
+			t.Errorf("expected body 'Thread main', got %q", r.FormValue("post[body]"))
+		}
+
+		if r.FormValue("thread[0][body]") != "Reply 1" {
+			t.Errorf("expected thread[0][body] 'Reply 1', got %q", r.FormValue("thread[0][body]"))
+		}
+		if r.FormValue("thread[1][body]") != "Reply 2" {
+			t.Errorf("expected thread[1][body] 'Reply 2', got %q", r.FormValue("thread[1][body]"))
+		}
+
+		// Thread child 0 has a URL media
+		urlMedia := r.MultipartForm.Value["thread[0][media][]"]
+		if len(urlMedia) != 1 || urlMedia[0] != "https://example.com/img.jpg" {
+			t.Errorf("expected thread[0] URL media, got %v", urlMedia)
+		}
+
+		// Thread child 1 has a file upload
+		files := r.MultipartForm.File["thread[1][media][]"]
+		if len(files) != 1 {
+			t.Errorf("expected 1 file in thread[1], got %d", len(files))
+		} else if files[0].Filename != "thread-img.png" {
+			t.Errorf("expected filename thread-img.png, got %s", files[0].Filename)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(Post{
+			ID:   "post-thread-files",
+			Body: "Thread main",
+			Thread: []ThreadChild{
+				{ID: "t-1", Body: "Reply 1"},
+				{ID: "t-2", Body: "Reply 2"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	post, err := c.Posts.Create(context.Background(), "Thread main", []string{"prof-1"}, &PostCreateOptions{
+		Thread: []ThreadChildInput{
+			{Body: "Reply 1", Media: []string{"https://example.com/img.jpg"}},
+			{Body: "Reply 2", MediaFiles: []string{tmpFile}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if post.ID != "post-thread-files" {
+		t.Errorf("expected post ID %q, got %q", "post-thread-files", post.ID)
+	}
+	if len(post.Thread) != 2 {
+		t.Fatalf("expected 2 thread children, got %d", len(post.Thread))
+	}
+}
+
+func TestPostsGet_WithMediaAndThread(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		imgURL := "https://cdn.example.com/img.jpg"
+		_ = json.NewEncoder(w).Encode(Post{
+			ID:     "post-1",
+			Body:   "Hello",
+			Status: PostStatusMediaProcessingFailed,
+			Media: []Media{
+				{ID: "m-1", Status: MediaStatusProcessed, ContentType: "image/jpeg", URL: &imgURL},
+			},
+			Thread: []ThreadChild{
+				{ID: "t-1", Body: "Reply"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	post, err := c.Posts.Get(context.Background(), "post-1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if post.Status != PostStatusMediaProcessingFailed {
+		t.Errorf("expected status media_processing_failed, got %s", post.Status)
+	}
+	if len(post.Media) != 1 {
+		t.Fatalf("expected 1 media, got %d", len(post.Media))
+	}
+	if post.Media[0].Status != MediaStatusProcessed {
+		t.Errorf("expected media status processed, got %s", post.Media[0].Status)
+	}
+	if len(post.Thread) != 1 {
+		t.Fatalf("expected 1 thread child, got %d", len(post.Thread))
+	}
+	if post.Thread[0].Body != "Reply" {
+		t.Errorf("expected thread body 'Reply', got %q", post.Thread[0].Body)
+	}
+}

@@ -82,7 +82,7 @@ func (s *PostsService) Get(ctx context.Context, id string, opts *RequestOptions)
 func (s *PostsService) Create(ctx context.Context, body string, profiles []string, opts *PostCreateOptions) (*Post, error) {
 	var reqOpts []requestOption
 
-	if opts != nil && len(opts.MediaFiles) > 0 {
+	if opts != nil && needsFormData(opts) {
 		formOpts, err := s.buildFormData(body, profiles, opts)
 		if err != nil {
 			return nil, err
@@ -176,6 +176,18 @@ func (s *PostsService) Stats(ctx context.Context, postIDs []string, opts *PostSt
 	return &result, nil
 }
 
+func needsFormData(opts *PostCreateOptions) bool {
+	if len(opts.MediaFiles) > 0 {
+		return true
+	}
+	for _, t := range opts.Thread {
+		if len(t.MediaFiles) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *PostsService) buildJSON(body string, profiles []string, opts *PostCreateOptions) []requestOption {
 	payload := map[string]any{
 		"post": map[string]any{
@@ -197,6 +209,9 @@ func (s *PostsService) buildJSON(body string, profiles []string, opts *PostCreat
 		}
 		if opts.Platforms != nil {
 			payload["platforms"] = opts.Platforms
+		}
+		if opts.Thread != nil {
+			payload["thread"] = opts.Thread
 		}
 	}
 
@@ -228,6 +243,34 @@ func (s *PostsService) buildFormData(body string, profiles []string, opts *PostC
 
 	if opts.Platforms != nil {
 		writePlatformParams(w, opts.Platforms)
+	}
+
+	for i, child := range opts.Thread {
+		prefix := fmt.Sprintf("thread[%d]", i)
+		_ = w.WriteField(prefix+"[body]", child.Body)
+		for _, u := range child.Media {
+			_ = w.WriteField(prefix+"[media][]", u)
+		}
+		for _, filePath := range child.MediaFiles {
+			fileData, err := os.ReadFile(filePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read thread media file %s: %w", filePath, err)
+			}
+
+			contentType := mimeTypeFromPath(filePath)
+			filename := filepath.Base(filePath)
+
+			h := make(textproto.MIMEHeader)
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, prefix+"[media][]", filename))
+			h.Set("Content-Type", contentType)
+			part, err := w.CreatePart(h)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create form file: %w", err)
+			}
+			if _, err := part.Write(fileData); err != nil {
+				return nil, fmt.Errorf("failed to write file data: %w", err)
+			}
+		}
 	}
 
 	for _, filePath := range opts.MediaFiles {
