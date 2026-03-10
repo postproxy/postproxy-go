@@ -213,6 +213,12 @@ func (s *PostsService) buildJSON(body string, profiles []string, opts *PostCreat
 		if opts.Thread != nil {
 			payload["thread"] = opts.Thread
 		}
+		if opts.QueueID != nil {
+			payload["queue_id"] = *opts.QueueID
+		}
+		if opts.QueuePriority != nil {
+			payload["queue_priority"] = *opts.QueuePriority
+		}
 	}
 
 	return []requestOption{withJSON(payload)}
