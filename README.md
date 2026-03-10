@@ -129,6 +129,60 @@ for postID, postStats := range stats.Data {
 }
 ```
 
+### Queues
+
+```go
+// List all queues
+queues, err := client.Queues.List(ctx, nil)
+
+// Get a queue
+queue, err := client.Queues.Get(ctx, "queue-id")
+
+// Get next available slot
+nextSlot, err := client.Queues.NextSlot(ctx, "queue-id")
+fmt.Println(nextSlot.NextSlot)
+
+// Create a queue with timeslots
+tz := "America/New_York"
+jitter := 10
+queue, err := client.Queues.Create(ctx, "Morning Posts", "profile-group-id", &postproxy.QueueCreateOptions{
+	Timezone: &tz,
+	Jitter:   &jitter,
+	Timeslots: []postproxy.TimeslotInput{
+		{Day: 1, Time: "09:00"},
+		{Day: 2, Time: "09:00"},
+		{Day: 3, Time: "09:00"},
+	},
+})
+
+// Update a queue
+newJitter := 15
+queue, err := client.Queues.Update(ctx, "queue-id", &postproxy.QueueUpdateOptions{
+	Jitter: &newJitter,
+	Timeslots: []postproxy.TimeslotInput{
+		{Day: 6, Time: "10:00"},            // add new timeslot
+		{ID: 1, Destroy: true},             // remove existing timeslot
+	},
+})
+
+// Pause/unpause a queue
+enabled := false
+queue, err := client.Queues.Update(ctx, "queue-id", &postproxy.QueueUpdateOptions{
+	Enabled: &enabled,
+})
+
+// Delete a queue
+result, err := client.Queues.Delete(ctx, "queue-id")
+
+// Add a post to a queue
+queueID := "queue-id"
+priority := "high"
+post, err := client.Posts.Create(ctx, "Queued post", []string{"profile-id"}, &postproxy.PostCreateOptions{
+	QueueID:       &queueID,
+	QueuePriority: &priority,
+})
+```
+
 ### Webhooks
 
 ```go

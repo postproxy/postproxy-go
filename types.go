@@ -60,14 +60,16 @@ type ThreadChildInput struct {
 
 // Post represents a social media post.
 type Post struct {
-	ID          string           `json:"id"`
-	Body        string           `json:"body"`
-	Status      PostStatus       `json:"status"`
-	ScheduledAt *string          `json:"scheduled_at"`
-	CreatedAt   string           `json:"created_at"`
-	Media       []Media          `json:"media"`
-	Platforms   []PlatformResult `json:"platforms"`
-	Thread      []ThreadChild    `json:"thread"`
+	ID             string           `json:"id"`
+	Body           string           `json:"body"`
+	Status         PostStatus       `json:"status"`
+	ScheduledAt    *string          `json:"scheduled_at"`
+	CreatedAt      string           `json:"created_at"`
+	Media          []Media          `json:"media"`
+	Platforms      []PlatformResult `json:"platforms"`
+	Thread         []ThreadChild    `json:"thread"`
+	QueueID        *string          `json:"queue_id"`
+	QueuePriority  *string          `json:"queue_priority"`
 }
 
 // Placement represents a placement option for a profile.
@@ -280,5 +282,58 @@ type PostCreateOptions struct {
 	Thread         []ThreadChildInput
 	ScheduledAt    *string
 	Draft          *bool
+	QueueID        *string
+	QueuePriority  *string
 	ProfileGroupID *string
+}
+
+// Timeslot represents a weekly recurring timeslot in a queue.
+type Timeslot struct {
+	ID   int    `json:"id"`
+	Day  int    `json:"day"`
+	Time string `json:"time"`
+}
+
+// Queue represents a post queue.
+type Queue struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Description    *string    `json:"description"`
+	Timezone       string     `json:"timezone"`
+	Enabled        bool       `json:"enabled"`
+	Jitter         int        `json:"jitter"`
+	ProfileGroupID string     `json:"profile_group_id"`
+	Timeslots      []Timeslot `json:"timeslots"`
+	PostsCount     int        `json:"posts_count"`
+}
+
+// NextSlotResponse represents the response from the next slot endpoint.
+type NextSlotResponse struct {
+	NextSlot string `json:"next_slot"`
+}
+
+// TimeslotInput represents a timeslot in a create/update request.
+type TimeslotInput struct {
+	Day     int    `json:"day,omitempty"`
+	Time    string `json:"time,omitempty"`
+	ID      int    `json:"id,omitempty"`
+	Destroy bool   `json:"_destroy,omitempty"`
+}
+
+// QueueCreateOptions contains options for creating a queue.
+type QueueCreateOptions struct {
+	Description *string
+	Timezone    *string
+	Jitter      *int
+	Timeslots   []TimeslotInput
+}
+
+// QueueUpdateOptions contains options for updating a queue.
+type QueueUpdateOptions struct {
+	Name        *string
+	Description *string
+	Timezone    *string
+	Enabled     *bool
+	Jitter      *int
+	Timeslots   []TimeslotInput
 }
