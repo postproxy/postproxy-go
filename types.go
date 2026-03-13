@@ -110,6 +110,7 @@ type ConnectionResponse struct {
 // FacebookParams contains Facebook-specific post parameters.
 type FacebookParams struct {
 	Format       *FacebookFormat `json:"format,omitempty"`
+	Title        *string         `json:"title,omitempty"`
 	FirstComment *string         `json:"first_comment,omitempty"`
 	PageID       *string         `json:"page_id,omitempty"`
 }

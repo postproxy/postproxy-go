@@ -70,6 +70,7 @@ type FacebookFormat string
 const (
 	FacebookFormatPost  FacebookFormat = "post"
 	FacebookFormatStory FacebookFormat = "story"
+	FacebookFormatReel  FacebookFormat = "reel"
 )
 
 // TikTokFormat represents the format of a TikTok post.
