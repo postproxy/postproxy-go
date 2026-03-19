@@ -288,6 +288,21 @@ type PostCreateOptions struct {
 	ProfileGroupID *string
 }
 
+// PostUpdateOptions contains options for updating a post.
+type PostUpdateOptions struct {
+	Body           *string
+	Profiles       []string
+	Media          []string
+	MediaFiles     []string
+	Platforms      *PlatformParams
+	Thread         []ThreadChildInput
+	ScheduledAt    *string
+	Draft          *bool
+	QueueID        *string
+	QueuePriority  *string
+	ProfileGroupID *string
+}
+
 // Timeslot represents a weekly recurring timeslot in a queue.
 type Timeslot struct {
 	ID   int    `json:"id"`
