@@ -108,6 +108,41 @@ for _, child := range post.Thread {
 	fmt.Printf("%s: %s\n", child.ID, child.Body)
 }
 
+// Update a post (only drafts or scheduled posts)
+newBody := "Updated content!"
+post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
+	Body: &newBody,
+})
+
+// Update platform params only
+ytPrivacy := "unlisted"
+post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
+	Platforms: &postproxy.PlatformParams{
+		YouTube: &postproxy.YouTubeParams{
+			PrivacyStatus: &ytPrivacy,
+		},
+	},
+})
+
+// Replace profiles and media
+post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
+	Profiles: []string{"twitter", "threads"},
+	Media:    []string{"https://example.com/new-image.jpg"},
+})
+
+// Replace thread children
+post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
+	Thread: []postproxy.ThreadChildInput{
+		{Body: "Updated first reply"},
+		{Body: "Updated second reply", Media: []string{"https://example.com/img.jpg"}},
+	},
+})
+
+// Remove all media
+post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
+	Media: []string{},
+})
+
 // Publish a draft
 post, err := client.Posts.PublishDraft(ctx, "post-id", nil)
 

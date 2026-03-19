@@ -109,6 +109,175 @@ func (s *PostsService) Create(ctx context.Context, body string, profiles []strin
 	return &result, nil
 }
 
+// Update updates an existing post.
+func (s *PostsService) Update(ctx context.Context, id string, opts *PostUpdateOptions) (*Post, error) {
+	var reqOpts []requestOption
+
+	if opts != nil && needsUpdateFormData(opts) {
+		formOpts, err := s.buildUpdateFormData(opts)
+		if err != nil {
+			return nil, err
+		}
+		reqOpts = append(reqOpts, formOpts...)
+	} else if opts != nil {
+		jsonOpts := s.buildUpdateJSON(opts)
+		reqOpts = append(reqOpts, jsonOpts...)
+	}
+
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, "PATCH", "/posts/"+id, reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Post
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func needsUpdateFormData(opts *PostUpdateOptions) bool {
+	if len(opts.MediaFiles) > 0 {
+		return true
+	}
+	for _, t := range opts.Thread {
+		if len(t.MediaFiles) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *PostsService) buildUpdateJSON(opts *PostUpdateOptions) []requestOption {
+	payload := map[string]any{}
+
+	post := map[string]any{}
+	if opts.Body != nil {
+		post["body"] = *opts.Body
+	}
+	if opts.ScheduledAt != nil {
+		post["scheduled_at"] = *opts.ScheduledAt
+	}
+	if opts.Draft != nil {
+		post["draft"] = *opts.Draft
+	}
+	if len(post) > 0 {
+		payload["post"] = post
+	}
+
+	if opts.Profiles != nil {
+		payload["profiles"] = opts.Profiles
+	}
+	if opts.Media != nil {
+		payload["media"] = opts.Media
+	}
+	if opts.Platforms != nil {
+		payload["platforms"] = opts.Platforms
+	}
+	if opts.Thread != nil {
+		payload["thread"] = opts.Thread
+	}
+	if opts.QueueID != nil {
+		payload["queue_id"] = *opts.QueueID
+	}
+	if opts.QueuePriority != nil {
+		payload["queue_priority"] = *opts.QueuePriority
+	}
+
+	return []requestOption{withJSON(payload)}
+}
+
+func (s *PostsService) buildUpdateFormData(opts *PostUpdateOptions) ([]requestOption, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	if opts.Body != nil {
+		_ = w.WriteField("post[body]", *opts.Body)
+	}
+
+	if opts.Profiles != nil {
+		for _, p := range opts.Profiles {
+			_ = w.WriteField("profiles[]", p)
+		}
+	}
+
+	if opts.ScheduledAt != nil {
+		_ = w.WriteField("post[scheduled_at]", *opts.ScheduledAt)
+	}
+	if opts.Draft != nil {
+		_ = w.WriteField("post[draft]", strconv.FormatBool(*opts.Draft))
+	}
+
+	if opts.Media != nil {
+		for _, u := range opts.Media {
+			_ = w.WriteField("media[]", u)
+		}
+	}
+
+	if opts.Platforms != nil {
+		writePlatformParams(w, opts.Platforms)
+	}
+
+	for i, child := range opts.Thread {
+		prefix := fmt.Sprintf("thread[%d]", i)
+		_ = w.WriteField(prefix+"[body]", child.Body)
+		for _, u := range child.Media {
+			_ = w.WriteField(prefix+"[media][]", u)
+		}
+		for _, filePath := range child.MediaFiles {
+			fileData, err := os.ReadFile(filePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read thread media file %s: %w", filePath, err)
+			}
+
+			contentType := mimeTypeFromPath(filePath)
+			filename := filepath.Base(filePath)
+
+			h := make(textproto.MIMEHeader)
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, prefix+"[media][]", filename))
+			h.Set("Content-Type", contentType)
+			part, err := w.CreatePart(h)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create form file: %w", err)
+			}
+			if _, err := part.Write(fileData); err != nil {
+				return nil, fmt.Errorf("failed to write file data: %w", err)
+			}
+		}
+	}
+
+	for _, filePath := range opts.MediaFiles {
+		fileData, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read media file %s: %w", filePath, err)
+		}
+
+		contentType := mimeTypeFromPath(filePath)
+		filename := filepath.Base(filePath)
+
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="media[]"; filename=%q`, filename))
+		h.Set("Content-Type", contentType)
+		part, err := w.CreatePart(h)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create form file: %w", err)
+		}
+		if _, err := part.Write(fileData); err != nil {
+			return nil, fmt.Errorf("failed to write file data: %w", err)
+		}
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	return []requestOption{withFormData(&buf, w.FormDataContentType())}, nil
+}
+
 // PublishDraft publishes a draft post.
 func (s *PostsService) PublishDraft(ctx context.Context, id string, opts *RequestOptions) (*Post, error) {
 	var reqOpts []requestOption
