@@ -24,6 +24,7 @@ type Client struct {
 	ProfileGroups *ProfileGroupsService
 	Webhooks      *WebhooksService
 	Queues        *QueuesService
+	Comments      *CommentsService
 }
 
 // Option configures the Client.
@@ -65,6 +66,7 @@ func NewClient(apiKey string, opts ...Option) *Client {
 	c.ProfileGroups = &ProfileGroupsService{client: c}
 	c.Webhooks = &WebhooksService{client: c}
 	c.Queues = &QueuesService{client: c}
+	c.Comments = &CommentsService{client: c}
 	return c
 }
 

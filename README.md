@@ -262,6 +262,54 @@ valid := postproxy.VerifyWebhookSignature(
 )
 ```
 
+### Comments
+
+```go
+// List comments on a post (paginated)
+comments, err := client.Comments.List(ctx, "post-id", "profile-id", nil)
+for _, comment := range comments.Data {
+	fmt.Printf("%s: %s\n", comment.AuthorUsername, comment.Body)
+	for _, reply := range comment.Replies {
+		fmt.Printf("  %s: %s\n", reply.AuthorUsername, reply.Body)
+	}
+}
+
+// List with pagination
+page := 2
+perPage := 10
+comments, err := client.Comments.List(ctx, "post-id", "profile-id", &postproxy.CommentListOptions{
+	Page:    &page,
+	PerPage: &perPage,
+})
+
+// Get a single comment
+comment, err := client.Comments.Get(ctx, "post-id", "comment-id", "profile-id")
+
+// Create a comment
+comment, err := client.Comments.Create(ctx, "post-id", "profile-id", &postproxy.CommentCreateOptions{
+	Text: "Great post!",
+})
+
+// Reply to a comment
+parentID := "comment-id"
+reply, err := client.Comments.Create(ctx, "post-id", "profile-id", &postproxy.CommentCreateOptions{
+	Text:     "Thanks!",
+	ParentID: &parentID,
+})
+
+// Delete a comment
+result, err := client.Comments.Delete(ctx, "post-id", "comment-id", "profile-id")
+fmt.Println(result.Accepted) // true
+
+// Hide / unhide a comment
+client.Comments.Hide(ctx, "post-id", "comment-id", "profile-id")
+client.Comments.Unhide(ctx, "post-id", "comment-id", "profile-id")
+
+// Like / unlike a comment
+client.Comments.Like(ctx, "post-id", "comment-id", "profile-id")
+client.Comments.Unlike(ctx, "post-id", "comment-id", "profile-id")
+```
+
 ### Profiles
 
 ```go
