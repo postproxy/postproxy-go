@@ -260,6 +260,41 @@ type StatsRecord struct {
 	RecordedAt string         `json:"recorded_at"`
 }
 
+// Comment represents a comment on a post.
+type Comment struct {
+	ID               string    `json:"id"`
+	ExternalID       *string   `json:"external_id"`
+	Body             string    `json:"body"`
+	Status           string    `json:"status"`
+	AuthorUsername   *string   `json:"author_username"`
+	AuthorAvatarURL  *string   `json:"author_avatar_url"`
+	AuthorExternalID *string   `json:"author_external_id"`
+	ParentExternalID *string   `json:"parent_external_id"`
+	LikeCount        int       `json:"like_count"`
+	IsHidden         bool      `json:"is_hidden"`
+	Permalink        *string   `json:"permalink"`
+	PlatformData     any       `json:"platform_data"`
+	PostedAt         *string   `json:"posted_at"`
+	CreatedAt        string    `json:"created_at"`
+	Replies          []Comment `json:"replies"`
+}
+
+// CommentListOptions contains options for listing comments.
+type CommentListOptions struct {
+	Page    *int
+	PerPage *int
+}
+
+// CommentCreateOptions contains options for creating a comment.
+type CommentCreateOptions struct {
+	ParentID *string
+}
+
+// AcceptedResponse represents a response indicating an action was accepted.
+type AcceptedResponse struct {
+	Accepted bool `json:"accepted"`
+}
+
 // RequestOptions contains common options for API requests.
 type RequestOptions struct {
 	ProfileGroupID *string
