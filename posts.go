@@ -303,10 +303,15 @@ func (s *PostsService) PublishDraft(ctx context.Context, id string, opts *Reques
 	return &result, nil
 }
 
-// Delete deletes a post by ID.
-func (s *PostsService) Delete(ctx context.Context, id string, opts *RequestOptions) (*DeleteResponse, error) {
+// Delete deletes a post by ID. Pass DeleteOnPlatform=true in opts to also delete the post from all published platforms.
+func (s *PostsService) Delete(ctx context.Context, id string, opts *PostDeleteOptions) (*DeleteResponse, error) {
 	var reqOpts []requestOption
 	if opts != nil {
+		if opts.DeleteOnPlatform != nil {
+			params := url.Values{}
+			params.Set("delete_on_platform", strconv.FormatBool(*opts.DeleteOnPlatform))
+			reqOpts = append(reqOpts, withParams(params))
+		}
 		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
 	}
 
@@ -316,6 +321,39 @@ func (s *PostsService) Delete(ctx context.Context, id string, opts *RequestOptio
 	}
 
 	var result DeleteResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteOnPlatform deletes a published post from one or more social media platforms without removing it from the database.
+// If opts is nil (or all targeting fields are nil), the post is deleted from all published platforms.
+func (s *PostsService) DeleteOnPlatform(ctx context.Context, id string, opts *PostDeleteOnPlatformOptions) (*DeleteOnPlatformResponse, error) {
+	var reqOpts []requestOption
+	payload := map[string]any{}
+	if opts != nil {
+		if opts.PostProfileID != nil {
+			payload["post_profile_id"] = *opts.PostProfileID
+		}
+		if opts.ProfileID != nil {
+			payload["profile_id"] = *opts.ProfileID
+		}
+		if opts.Network != nil {
+			payload["network"] = *opts.Network
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+	if len(payload) > 0 {
+		reqOpts = append(reqOpts, withJSON(payload))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPost, "/posts/"+id+"/delete_on_platform", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DeleteOnPlatformResponse
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}

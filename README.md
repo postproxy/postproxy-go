@@ -149,6 +149,22 @@ post, err := client.Posts.PublishDraft(ctx, "post-id", nil)
 // Delete a post
 result, err := client.Posts.Delete(ctx, "post-id", nil)
 
+// Delete a post and also remove it from social platforms
+truthy := true
+result, err = client.Posts.Delete(ctx, "post-id", &postproxy.PostDeleteOptions{DeleteOnPlatform: &truthy})
+
+// Delete from platforms only (keeps DB record). Defaults to all platforms.
+r1, err := client.Posts.DeleteOnPlatform(ctx, "post-id", nil)
+// Target a single network
+network := "twitter"
+r2, err := client.Posts.DeleteOnPlatform(ctx, "post-id", &postproxy.PostDeleteOnPlatformOptions{Network: &network})
+// Target a specific profile
+profID := "prof-abc"
+r3, err := client.Posts.DeleteOnPlatform(ctx, "post-id", &postproxy.PostDeleteOnPlatformOptions{ProfileID: &profID})
+// Target a specific post profile (covers entire thread for that profile)
+ppID := "pp-abc"
+r4, err := client.Posts.DeleteOnPlatform(ctx, "post-id", &postproxy.PostDeleteOnPlatformOptions{PostProfileID: &ppID})
+
 // Get stats for posts
 from := "2026-02-01T00:00:00Z"
 to := "2026-02-24T00:00:00Z"

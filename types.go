@@ -105,6 +105,18 @@ type DeleteResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
+// DeletingPlatform represents a post profile scheduled for platform deletion.
+type DeletingPlatform struct {
+	PostProfileID string   `json:"post_profile_id"`
+	Platform      Platform `json:"platform"`
+}
+
+// DeleteOnPlatformResponse represents the response from deleting a post from platforms.
+type DeleteOnPlatformResponse struct {
+	Success  bool               `json:"success"`
+	Deleting []DeletingPlatform `json:"deleting"`
+}
+
 // SuccessResponse represents a generic success response.
 type SuccessResponse struct {
 	Success bool `json:"success"`
@@ -332,6 +344,24 @@ type PostCreateOptions struct {
 	Draft          *bool
 	QueueID        *string
 	QueuePriority  *string
+	ProfileGroupID *string
+}
+
+// PostDeleteOptions contains options for deleting a post.
+type PostDeleteOptions struct {
+	// DeleteOnPlatform, when true, also deletes the post from all published platforms before removing it from the database.
+	DeleteOnPlatform *bool
+	ProfileGroupID   *string
+}
+
+// PostDeleteOnPlatformOptions contains options for deleting a post from social platforms.
+type PostDeleteOnPlatformOptions struct {
+	// PostProfileID targets a specific post profile. Covers the entire thread for the underlying profile.
+	PostProfileID *string
+	// ProfileID targets all post profiles for a profile on the post.
+	ProfileID *string
+	// Network targets all post profiles for a network (e.g. "twitter").
+	Network        *string
 	ProfileGroupID *string
 }
 
