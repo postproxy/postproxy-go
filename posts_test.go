@@ -431,6 +431,126 @@ func TestPostsDelete(t *testing.T) {
 	}
 }
 
+func TestPostsDelete_WithDeleteOnPlatform(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Query().Get("delete_on_platform") != "true" {
+			t.Errorf("expected delete_on_platform=true, got %q", r.URL.Query().Get("delete_on_platform"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(DeleteResponse{Deleted: true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	truthy := true
+	result, err := c.Posts.Delete(context.Background(), "post-del", &PostDeleteOptions{DeleteOnPlatform: &truthy})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Deleted {
+		t.Error("expected deleted=true")
+	}
+}
+
+func TestPostsDeleteOnPlatform_AllPlatforms(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/posts/post-1/delete_on_platform" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if len(body) != 0 {
+			t.Errorf("expected empty body, got %q", string(body))
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(DeleteOnPlatformResponse{
+			Success:  true,
+			Deleting: []DeletingPlatform{{PostProfileID: "pp-1", Platform: PlatformTwitter}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	result, err := c.Posts.DeleteOnPlatform(context.Background(), "post-1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Success {
+		t.Error("expected success=true")
+	}
+	if len(result.Deleting) != 1 || result.Deleting[0].Platform != PlatformTwitter {
+		t.Errorf("unexpected deleting: %+v", result.Deleting)
+	}
+}
+
+func TestPostsDeleteOnPlatform_ByNetwork(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		if payload["network"] != "twitter" {
+			t.Errorf("expected network=twitter, got %v", payload["network"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(DeleteOnPlatformResponse{Success: true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	network := "twitter"
+	_, err := c.Posts.DeleteOnPlatform(context.Background(), "post-1", &PostDeleteOnPlatformOptions{Network: &network})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPostsDeleteOnPlatform_ByProfileID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		if payload["profile_id"] != "prof-1" {
+			t.Errorf("expected profile_id=prof-1, got %v", payload["profile_id"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(DeleteOnPlatformResponse{Success: true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	profileID := "prof-1"
+	_, err := c.Posts.DeleteOnPlatform(context.Background(), "post-1", &PostDeleteOnPlatformOptions{ProfileID: &profileID})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPostsDeleteOnPlatform_ByPostProfileID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		if payload["post_profile_id"] != "pp-1" {
+			t.Errorf("expected post_profile_id=pp-1, got %v", payload["post_profile_id"])
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(DeleteOnPlatformResponse{Success: true})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	ppID := "pp-1"
+	_, err := c.Posts.DeleteOnPlatform(context.Background(), "post-1", &PostDeleteOnPlatformOptions{PostProfileID: &ppID})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestPostsCreate_WithThread(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

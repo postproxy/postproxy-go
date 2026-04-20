@@ -24,14 +24,23 @@ type Insights struct {
 	On          *string `json:"on"`
 }
 
+// ErrorDetails represents structured error details from the platform.
+type ErrorDetails struct {
+	PlatformErrorCode    *string `json:"platform_error_code"`
+	PlatformErrorSubcode *string `json:"platform_error_subcode"`
+	PlatformErrorMessage *string `json:"platform_error_message"`
+	PostproxyNote        *string `json:"postproxy_note"`
+}
+
 // PlatformResult represents the result of posting to a specific platform.
 type PlatformResult struct {
-	Platform    Platform           `json:"platform"`
-	Status      PlatformPostStatus `json:"status"`
-	Params      map[string]any     `json:"params"`
-	Error       *string            `json:"error"`
-	AttemptedAt *string            `json:"attempted_at"`
-	Insights    *Insights          `json:"insights"`
+	Platform     Platform           `json:"platform"`
+	Status       PlatformPostStatus `json:"status"`
+	Params       map[string]any     `json:"params"`
+	Error        *string            `json:"error"`
+	ErrorDetails *ErrorDetails      `json:"error_details"`
+	AttemptedAt  *string            `json:"attempted_at"`
+	Insights     *Insights          `json:"insights"`
 }
 
 // Media represents a media attachment on a post.
@@ -96,6 +105,18 @@ type DeleteResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
+// DeletingPlatform represents a post profile scheduled for platform deletion.
+type DeletingPlatform struct {
+	PostProfileID string   `json:"post_profile_id"`
+	Platform      Platform `json:"platform"`
+}
+
+// DeleteOnPlatformResponse represents the response from deleting a post from platforms.
+type DeleteOnPlatformResponse struct {
+	Success  bool               `json:"success"`
+	Deleting []DeletingPlatform `json:"deleting"`
+}
+
 // SuccessResponse represents a generic success response.
 type SuccessResponse struct {
 	Success bool `json:"success"`
@@ -148,11 +169,14 @@ type LinkedInParams struct {
 
 // YouTubeParams contains YouTube-specific post parameters.
 type YouTubeParams struct {
-	Format        *YouTubeFormat  `json:"format,omitempty"`
-	Title         *string         `json:"title,omitempty"`
-	PrivacyStatus *YouTubePrivacy `json:"privacy_status,omitempty"`
-	CoverURL      *string         `json:"cover_url,omitempty"`
-	MadeForKids   *bool           `json:"made_for_kids,omitempty"`
+	Format                 *YouTubeFormat  `json:"format,omitempty"`
+	Title                  *string         `json:"title,omitempty"`
+	PrivacyStatus          *YouTubePrivacy `json:"privacy_status,omitempty"`
+	CoverURL               *string         `json:"cover_url,omitempty"`
+	MadeForKids            *bool           `json:"made_for_kids,omitempty"`
+	Tags                   []string        `json:"tags,omitempty"`
+	CategoryID             *string         `json:"category_id,omitempty"`
+	ContainsSyntheticMedia *bool           `json:"contains_synthetic_media,omitempty"`
 }
 
 // PinterestParams contains Pinterest-specific post parameters.
@@ -320,6 +344,24 @@ type PostCreateOptions struct {
 	Draft          *bool
 	QueueID        *string
 	QueuePriority  *string
+	ProfileGroupID *string
+}
+
+// PostDeleteOptions contains options for deleting a post.
+type PostDeleteOptions struct {
+	// DeleteOnPlatform, when true, also deletes the post from all published platforms before removing it from the database.
+	DeleteOnPlatform *bool
+	ProfileGroupID   *string
+}
+
+// PostDeleteOnPlatformOptions contains options for deleting a post from social platforms.
+type PostDeleteOnPlatformOptions struct {
+	// PostProfileID targets a specific post profile. Covers the entire thread for the underlying profile.
+	PostProfileID *string
+	// ProfileID targets all post profiles for a profile on the post.
+	ProfileID *string
+	// Network targets all post profiles for a network (e.g. "twitter").
+	Network        *string
 	ProfileGroupID *string
 }
 
