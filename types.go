@@ -24,14 +24,23 @@ type Insights struct {
 	On          *string `json:"on"`
 }
 
+// ErrorDetails represents structured error details from the platform.
+type ErrorDetails struct {
+	PlatformErrorCode    *string `json:"platform_error_code"`
+	PlatformErrorSubcode *string `json:"platform_error_subcode"`
+	PlatformErrorMessage *string `json:"platform_error_message"`
+	PostproxyNote        *string `json:"postproxy_note"`
+}
+
 // PlatformResult represents the result of posting to a specific platform.
 type PlatformResult struct {
-	Platform    Platform           `json:"platform"`
-	Status      PlatformPostStatus `json:"status"`
-	Params      map[string]any     `json:"params"`
-	Error       *string            `json:"error"`
-	AttemptedAt *string            `json:"attempted_at"`
-	Insights    *Insights          `json:"insights"`
+	Platform     Platform           `json:"platform"`
+	Status       PlatformPostStatus `json:"status"`
+	Params       map[string]any     `json:"params"`
+	Error        *string            `json:"error"`
+	ErrorDetails *ErrorDetails      `json:"error_details"`
+	AttemptedAt  *string            `json:"attempted_at"`
+	Insights     *Insights          `json:"insights"`
 }
 
 // Media represents a media attachment on a post.
