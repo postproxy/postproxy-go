@@ -211,6 +211,12 @@ func (s *PostsService) buildUpdateFormData(opts *PostUpdateOptions) ([]requestOp
 	if opts.Draft != nil {
 		_ = w.WriteField("post[draft]", strconv.FormatBool(*opts.Draft))
 	}
+	if opts.QueueID != nil {
+		_ = w.WriteField("queue_id", *opts.QueueID)
+	}
+	if opts.QueuePriority != nil {
+		_ = w.WriteField("queue_priority", *opts.QueuePriority)
+	}
 
 	if opts.Media != nil {
 		for _, u := range opts.Media {
@@ -408,6 +414,12 @@ func (s *PostsService) buildFormData(body string, profiles []string, opts *PostC
 	}
 	if opts.Draft != nil {
 		_ = w.WriteField("post[draft]", strconv.FormatBool(*opts.Draft))
+	}
+	if opts.QueueID != nil {
+		_ = w.WriteField("queue_id", *opts.QueueID)
+	}
+	if opts.QueuePriority != nil {
+		_ = w.WriteField("queue_priority", *opts.QueuePriority)
 	}
 
 	if opts.Media != nil {
