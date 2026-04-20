@@ -148,11 +148,14 @@ type LinkedInParams struct {
 
 // YouTubeParams contains YouTube-specific post parameters.
 type YouTubeParams struct {
-	Format        *YouTubeFormat  `json:"format,omitempty"`
-	Title         *string         `json:"title,omitempty"`
-	PrivacyStatus *YouTubePrivacy `json:"privacy_status,omitempty"`
-	CoverURL      *string         `json:"cover_url,omitempty"`
-	MadeForKids   *bool           `json:"made_for_kids,omitempty"`
+	Format                 *YouTubeFormat  `json:"format,omitempty"`
+	Title                  *string         `json:"title,omitempty"`
+	PrivacyStatus          *YouTubePrivacy `json:"privacy_status,omitempty"`
+	CoverURL               *string         `json:"cover_url,omitempty"`
+	MadeForKids            *bool           `json:"made_for_kids,omitempty"`
+	Tags                   []string        `json:"tags,omitempty"`
+	CategoryID             *string         `json:"category_id,omitempty"`
+	ContainsSyntheticMedia *bool           `json:"contains_synthetic_media,omitempty"`
 }
 
 // PinterestParams contains Pinterest-specific post parameters.
