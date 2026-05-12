@@ -89,10 +89,17 @@ post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postpr
 
 // Create a post with platform-specific parameters
 igFormat := postproxy.InstagramFormatReel
+parseMode := postproxy.TelegramParseModeHTML
+disablePreview := true
 post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postproxy.PostCreateOptions{
 	Platforms: &postproxy.PlatformParams{
 		Instagram: &postproxy.InstagramParams{
 			Format: &igFormat,
+		},
+		Telegram: &postproxy.TelegramParams{
+			ChatID:             "-1001234567890",
+			ParseMode:          &parseMode,
+			DisableLinkPreview: &disablePreview,
 		},
 	},
 })
@@ -278,6 +285,33 @@ valid := postproxy.VerifyWebhookSignature(
 )
 ```
 
+#### Event types and typed payloads
+
+Subscribe to any of these events (or pass `[]string{"*"}` for all):
+
+`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `media.failed`, `comment.created`.
+
+`ParseWebhookEvent` validates the envelope; the `As*` helpers decode `Data` into a typed payload:
+
+```go
+event, err := postproxy.ParseWebhookEvent(requestBody)
+if err != nil {
+	// errors.Is(err, postproxy.ErrUnknownWebhookEvent) for unknown types
+	return
+}
+switch event.Type {
+case postproxy.EventProfileStats:
+	data, _ := event.AsProfileStats()
+	fmt.Println(data.ProfileID, data.Stats)
+case postproxy.EventPlatformPostPublished:
+	data, _ := event.AsPlatformPost()
+	fmt.Println("Published:", data.PlatformID)
+case postproxy.EventCommentCreated:
+	data, _ := event.AsCommentCreated()
+	fmt.Println(*data.AuthorUsername, ":", data.Body)
+}
+```
+
 ### Comments
 
 ```go
@@ -340,6 +374,21 @@ placements, err := client.Profiles.Placements(ctx, "profile-id", nil)
 
 // Delete a profile
 result, err := client.Profiles.Delete(ctx, "profile-id", nil)
+
+// Profile stats timeseries — PlacementID required for facebook, linkedin, telegram
+placementID := "108520199"
+from := "2026-04-01T00:00:00Z"
+stats, err := client.Profiles.GetProfileStats(ctx, "prof_li_001", &postproxy.ProfileStatsOptions{
+	PlacementID: &placementID,
+	From:        &from,
+})
+for _, r := range stats.Data.Records {
+	fmt.Printf("%s: %v\n", r.RecordedAt, r.Stats["followerCount"])
+}
+
+// Bluesky — no placements
+bsky, err := client.Profiles.GetProfileStats(ctx, "prof_bsky_001", nil)
+fmt.Println(bsky.Data.Records[len(bsky.Data.Records)-1].Stats["followersCount"])
 ```
 
 ### Profile Groups
@@ -362,6 +411,27 @@ conn, err := client.ProfileGroups.InitializeConnection(
 	ctx, "group-id", postproxy.PlatformInstagram, "https://myapp.com/callback",
 )
 fmt.Println("Connect here:", conn.URL)
+
+// BlueSky — app password (synchronous, no OAuth)
+bsky, err := client.ProfileGroups.ConnectBluesky(ctx, "group-id", postproxy.BlueskyConnectOptions{
+	Identifier:  "yourname.bsky.social",
+	AppPassword: "xxxx-xxxx-xxxx-xxxx",
+})
+fmt.Println(bsky.Profile.ID)
+
+// Telegram — bring-your-own-bot. Channels populate asynchronously; poll
+// placements until non-empty.
+tg, err := client.ProfileGroups.ConnectTelegram(ctx, "group-id", postproxy.TelegramConnectOptions{
+	BotToken: "123456789:ABCdef-GhIJklMnOpQrStUvWxYz",
+})
+if tg.NextStep != nil { fmt.Println(*tg.NextStep) }
+
+var placements *postproxy.ListResponse[postproxy.Placement]
+for {
+	placements, err = client.Profiles.Placements(ctx, tg.Profile.ID, nil)
+	if err != nil || len(placements.Data) > 0 { break }
+	time.Sleep(3 * time.Second)
+}
 ```
 
 ## Error Handling

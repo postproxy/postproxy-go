@@ -122,10 +122,53 @@ type SuccessResponse struct {
 	Success bool `json:"success"`
 }
 
-// ConnectionResponse represents the response from an initialize connection operation.
+// ConnectionResponse represents the response from an OAuth initialize connection operation.
 type ConnectionResponse struct {
 	URL     string `json:"url"`
 	Success bool   `json:"success"`
+}
+
+// SyncProfile is the profile returned by non-OAuth connection flows (BlueSky, Telegram).
+type SyncProfile struct {
+	ID               string  `json:"id"`
+	Network          Platform `json:"network"`
+	Name             string  `json:"name"`
+	ExternalUsername *string `json:"external_username"`
+}
+
+// BlueskyConnectionResponse is returned by ConnectBluesky.
+type BlueskyConnectionResponse struct {
+	Success bool        `json:"success"`
+	Profile SyncProfile `json:"profile"`
+}
+
+// TelegramConnectionResponse is returned by ConnectTelegram. Channels populate
+// asynchronously — poll ProfilesService.Placements until non-empty.
+type TelegramConnectionResponse struct {
+	Success  bool        `json:"success"`
+	Profile  SyncProfile `json:"profile"`
+	NextStep *string     `json:"next_step,omitempty"`
+}
+
+// ProfileStats holds a profile's stats timeseries returned by GetProfileStats.
+type ProfileStats struct {
+	ProfileID   string        `json:"profile_id"`
+	Platform    Platform      `json:"platform"`
+	PlacementID *string       `json:"placement_id"`
+	Records     []StatsRecord `json:"records"`
+}
+
+// ProfileStatsResponse wraps the data field returned by GET /profiles/:id/stats.
+type ProfileStatsResponse struct {
+	Data ProfileStats `json:"data"`
+}
+
+// ProfileStatsOptions are the optional query parameters for GetProfileStats.
+type ProfileStatsOptions struct {
+	PlacementID    *string
+	From           *string
+	To             *string
+	ProfileGroupID *string
 }
 
 // FacebookParams contains Facebook-specific post parameters.
@@ -199,6 +242,20 @@ type TwitterParams struct {
 	Format *TwitterFormat `json:"format,omitempty"`
 }
 
+// BlueskyParams contains Bluesky-specific post parameters.
+type BlueskyParams struct {
+	Format *BlueskyFormat `json:"format,omitempty"`
+}
+
+// TelegramParams contains Telegram-specific post parameters. ChatID is required.
+type TelegramParams struct {
+	Format              *TelegramFormat    `json:"format,omitempty"`
+	ChatID              string             `json:"chat_id"`
+	ParseMode           *TelegramParseMode `json:"parse_mode,omitempty"`
+	DisableLinkPreview  *bool              `json:"disable_link_preview,omitempty"`
+	DisableNotification *bool              `json:"disable_notification,omitempty"`
+}
+
 // PlatformParams contains platform-specific parameters for a post.
 type PlatformParams struct {
 	Facebook  *FacebookParams  `json:"facebook,omitempty"`
@@ -209,6 +266,8 @@ type PlatformParams struct {
 	Pinterest *PinterestParams `json:"pinterest,omitempty"`
 	Threads   *ThreadsParams   `json:"threads,omitempty"`
 	Twitter   *TwitterParams   `json:"twitter,omitempty"`
+	Bluesky   *BlueskyParams   `json:"bluesky,omitempty"`
+	Telegram  *TelegramParams  `json:"telegram,omitempty"`
 }
 
 // Webhook represents a webhook subscription.

@@ -1,5 +1,8 @@
 package postproxy
 
+// Version is the SDK version, sent as part of the User-Agent header.
+const Version = "1.8.0"
+
 // Platform represents a social media platform.
 type Platform string
 
@@ -12,6 +15,8 @@ const (
 	PlatformTwitter   Platform = "twitter"
 	PlatformThreads   Platform = "threads"
 	PlatformPinterest Platform = "pinterest"
+	PlatformBluesky   Platform = "bluesky"
+	PlatformTelegram  Platform = "telegram"
 )
 
 // PostStatus represents the status of a post.
@@ -134,3 +139,57 @@ const (
 	YouTubePrivacyUnlisted YouTubePrivacy = "unlisted"
 	YouTubePrivacyPrivate  YouTubePrivacy = "private"
 )
+
+// BlueskyFormat represents the format of a Bluesky post.
+type BlueskyFormat string
+
+const (
+	BlueskyFormatPost BlueskyFormat = "post"
+)
+
+// TelegramFormat represents the format of a Telegram post.
+type TelegramFormat string
+
+const (
+	TelegramFormatPost TelegramFormat = "post"
+)
+
+// TelegramParseMode controls Telegram message body formatting.
+type TelegramParseMode string
+
+const (
+	TelegramParseModeHTML       TelegramParseMode = "HTML"
+	TelegramParseModeMarkdownV2 TelegramParseMode = "MarkdownV2"
+)
+
+// WebhookEventType is the discriminator for webhook events.
+type WebhookEventType string
+
+const (
+	EventPostProcessed                 WebhookEventType = "post.processed"
+	EventPostImported                  WebhookEventType = "post.imported"
+	EventPlatformPostPublished         WebhookEventType = "platform_post.published"
+	EventPlatformPostFailed            WebhookEventType = "platform_post.failed"
+	EventPlatformPostFailedWaitingRetry WebhookEventType = "platform_post.failed_waiting_for_retry"
+	EventPlatformPostInsights          WebhookEventType = "platform_post.insights"
+	EventProfileConnected              WebhookEventType = "profile.connected"
+	EventProfileDisconnected           WebhookEventType = "profile.disconnected"
+	EventProfileStats                  WebhookEventType = "profile.stats"
+	EventMediaFailed                   WebhookEventType = "media.failed"
+	EventCommentCreated                WebhookEventType = "comment.created"
+)
+
+// WebhookEventTypes is the set of all known webhook event types.
+var WebhookEventTypes = []WebhookEventType{
+	EventPostProcessed,
+	EventPostImported,
+	EventPlatformPostPublished,
+	EventPlatformPostFailed,
+	EventPlatformPostFailedWaitingRetry,
+	EventPlatformPostInsights,
+	EventProfileConnected,
+	EventProfileDisconnected,
+	EventProfileStats,
+	EventMediaFailed,
+	EventCommentCreated,
+}

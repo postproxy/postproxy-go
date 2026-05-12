@@ -8,7 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 )
+
+var userAgent = fmt.Sprintf("postproxy-go/%s (go/%s; %s/%s)", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
 const defaultBaseURL = "https://api.postproxy.dev"
 
@@ -159,6 +162,7 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
