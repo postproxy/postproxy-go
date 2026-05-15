@@ -43,14 +43,23 @@ type PlatformResult struct {
 	Insights     *Insights          `json:"insights"`
 }
 
+// MediaPlatformError represents a per-platform error encountered while uploading a media item.
+type MediaPlatformError struct {
+	Platform     Platform           `json:"platform"`
+	Status       PlatformPostStatus `json:"status"`
+	Error        *string            `json:"error"`
+	ErrorDetails *ErrorDetails      `json:"error_details"`
+}
+
 // Media represents a media attachment on a post.
 type Media struct {
-	ID           string      `json:"id"`
-	Status       MediaStatus `json:"status"`
-	ErrorMessage *string     `json:"error_message"`
-	ContentType  string      `json:"content_type"`
-	SourceURL    *string     `json:"source_url"`
-	URL          *string     `json:"url"`
+	ID           string               `json:"id"`
+	Status       MediaStatus          `json:"status"`
+	ErrorMessage *string              `json:"error_message"`
+	ContentType  string               `json:"content_type"`
+	SourceURL    *string              `json:"source_url"`
+	URL          *string              `json:"url"`
+	Platforms    []MediaPlatformError `json:"platforms,omitempty"`
 }
 
 // ThreadChild represents a child post in a thread.
@@ -258,16 +267,17 @@ type TelegramParams struct {
 
 // PlatformParams contains platform-specific parameters for a post.
 type PlatformParams struct {
-	Facebook  *FacebookParams  `json:"facebook,omitempty"`
-	Instagram *InstagramParams `json:"instagram,omitempty"`
-	TikTok    *TikTokParams    `json:"tiktok,omitempty"`
-	LinkedIn  *LinkedInParams  `json:"linkedin,omitempty"`
-	YouTube   *YouTubeParams   `json:"youtube,omitempty"`
-	Pinterest *PinterestParams `json:"pinterest,omitempty"`
-	Threads   *ThreadsParams   `json:"threads,omitempty"`
-	Twitter   *TwitterParams   `json:"twitter,omitempty"`
-	Bluesky   *BlueskyParams   `json:"bluesky,omitempty"`
-	Telegram  *TelegramParams  `json:"telegram,omitempty"`
+	Facebook       *FacebookParams `json:"facebook,omitempty"`
+	Instagram      *InstagramParams `json:"instagram,omitempty"`
+	TikTok         *TikTokParams    `json:"tiktok,omitempty"`
+	LinkedIn       *LinkedInParams  `json:"linkedin,omitempty"`
+	YouTube        *YouTubeParams   `json:"youtube,omitempty"`
+	Pinterest      *PinterestParams `json:"pinterest,omitempty"`
+	Threads        *ThreadsParams   `json:"threads,omitempty"`
+	Twitter        *TwitterParams   `json:"twitter,omitempty"`
+	Bluesky        *BlueskyParams   `json:"bluesky,omitempty"`
+	Telegram       *TelegramParams  `json:"telegram,omitempty"`
+	GoogleBusiness map[string]any   `json:"google_business,omitempty"`
 }
 
 // Webhook represents a webhook subscription.
@@ -360,6 +370,30 @@ type Comment struct {
 	PostedAt         *string   `json:"posted_at"`
 	CreatedAt        string    `json:"created_at"`
 	Replies          []Comment `json:"replies"`
+}
+
+// ProfileComment represents a profile-level comment (Google Business review or reply).
+type ProfileComment struct {
+	ID               string           `json:"id"`
+	ExternalID       string           `json:"external_id"`
+	ParentExternalID *string          `json:"parent_external_id"`
+	PlacementID      string           `json:"placement_id"`
+	Body             string           `json:"body"`
+	Status           string           `json:"status"`
+	AuthorUsername   *string          `json:"author_username"`
+	AuthorAvatarURL  *string          `json:"author_avatar_url"`
+	PlatformData     map[string]any   `json:"platform_data"`
+	PostedAt         string           `json:"posted_at"`
+	CreatedAt        string           `json:"created_at"`
+	Replies          []ProfileComment `json:"replies"`
+}
+
+// ProfileCommentListOptions contains options for listing profile comments.
+type ProfileCommentListOptions struct {
+	PlacementID    *string
+	Page           *int
+	PerPage        *int
+	ProfileGroupID *string
 }
 
 // CommentListOptions contains options for listing comments.

@@ -101,6 +101,14 @@ post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postpr
 			ParseMode:          &parseMode,
 			DisableLinkPreview: &disablePreview,
 		},
+		// Google Business: untyped map. Formats: "standard", "event", "offer".
+		// CTA actions: LEARN_MORE, BOOK, ORDER, SHOP, SIGN_UP, CALL. Max 1 image (≤5 MB).
+		GoogleBusiness: map[string]any{
+			"format":          "standard",
+			"location_id":     "accounts/123/locations/456",
+			"cta_action_type": "LEARN_MORE",
+			"cta_url":         "https://example.com",
+		},
 	},
 })
 
@@ -358,6 +366,30 @@ client.Comments.Unhide(ctx, "post-id", "comment-id", "profile-id")
 // Like / unlike a comment
 client.Comments.Like(ctx, "post-id", "comment-id", "profile-id")
 client.Comments.Unlike(ctx, "post-id", "comment-id", "profile-id")
+```
+
+### Profile comments (Google Business reviews)
+
+Profile-level comments expose Google Business reviews and replies. Reviews are user-generated — the SDK lets you list/get them and reply to or delete your own replies. Reviews sync twice daily.
+
+```go
+// List reviews for a profile (paginated)
+reviews, err := client.ProfileComments.List(ctx, "profile-id", nil)
+
+// Filter by placement (location)
+placement := "accounts/123/locations/456"
+reviews, err := client.ProfileComments.List(ctx, "profile-id", &postproxy.ProfileCommentListOptions{
+    PlacementID: &placement,
+})
+
+// Get a single review
+review, err := client.ProfileComments.Get(ctx, "profile-id", "review-id")
+
+// Reply to a review (parentID is the review id)
+reply, err := client.ProfileComments.Create(ctx, "profile-id", "review-id", "Thanks for visiting!")
+
+// Delete your reply
+_, err := client.ProfileComments.Delete(ctx, "profile-id", "reply-id")
 ```
 
 ### Profiles
