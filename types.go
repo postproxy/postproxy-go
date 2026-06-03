@@ -78,16 +78,16 @@ type ThreadChildInput struct {
 
 // Post represents a social media post.
 type Post struct {
-	ID             string           `json:"id"`
-	Body           string           `json:"body"`
-	Status         PostStatus       `json:"status"`
-	ScheduledAt    *string          `json:"scheduled_at"`
-	CreatedAt      string           `json:"created_at"`
-	Media          []Media          `json:"media"`
-	Platforms      []PlatformResult `json:"platforms"`
-	Thread         []ThreadChild    `json:"thread"`
-	QueueID        *string          `json:"queue_id"`
-	QueuePriority  *string          `json:"queue_priority"`
+	ID            string           `json:"id"`
+	Body          string           `json:"body"`
+	Status        PostStatus       `json:"status"`
+	ScheduledAt   *string          `json:"scheduled_at"`
+	CreatedAt     string           `json:"created_at"`
+	Media         []Media          `json:"media"`
+	Platforms     []PlatformResult `json:"platforms"`
+	Thread        []ThreadChild    `json:"thread"`
+	QueueID       *string          `json:"queue_id"`
+	QueuePriority *string          `json:"queue_priority"`
 }
 
 // Placement represents a placement option for a profile.
@@ -139,10 +139,10 @@ type ConnectionResponse struct {
 
 // SyncProfile is the profile returned by non-OAuth connection flows (BlueSky, Telegram).
 type SyncProfile struct {
-	ID               string  `json:"id"`
+	ID               string   `json:"id"`
 	Network          Platform `json:"network"`
-	Name             string  `json:"name"`
-	ExternalUsername *string `json:"external_username"`
+	Name             string   `json:"name"`
+	ExternalUsername *string  `json:"external_username"`
 }
 
 // BlueskyConnectionResponse is returned by ConnectBluesky.
@@ -201,16 +201,16 @@ type InstagramParams struct {
 
 // TikTokParams contains TikTok-specific post parameters.
 type TikTokParams struct {
-	Format              *TikTokFormat  `json:"format,omitempty"`
-	PrivacyStatus       *TikTokPrivacy `json:"privacy_status,omitempty"`
-	PhotoCoverIndex     *int           `json:"photo_cover_index,omitempty"`
-	AutoAddMusic        *bool          `json:"auto_add_music,omitempty"`
-	MadeWithAI          *bool          `json:"made_with_ai,omitempty"`
-	DisableComment      *bool          `json:"disable_comment,omitempty"`
-	DisableDuet         *bool          `json:"disable_duet,omitempty"`
-	DisableStitch       *bool          `json:"disable_stitch,omitempty"`
-	BrandContentToggle  *bool          `json:"brand_content_toggle,omitempty"`
-	BrandOrganicToggle  *bool          `json:"brand_organic_toggle,omitempty"`
+	Format             *TikTokFormat  `json:"format,omitempty"`
+	PrivacyStatus      *TikTokPrivacy `json:"privacy_status,omitempty"`
+	PhotoCoverIndex    *int           `json:"photo_cover_index,omitempty"`
+	AutoAddMusic       *bool          `json:"auto_add_music,omitempty"`
+	MadeWithAI         *bool          `json:"made_with_ai,omitempty"`
+	DisableComment     *bool          `json:"disable_comment,omitempty"`
+	DisableDuet        *bool          `json:"disable_duet,omitempty"`
+	DisableStitch      *bool          `json:"disable_stitch,omitempty"`
+	BrandContentToggle *bool          `json:"brand_content_toggle,omitempty"`
+	BrandOrganicToggle *bool          `json:"brand_organic_toggle,omitempty"`
 }
 
 // LinkedInParams contains LinkedIn-specific post parameters.
@@ -267,7 +267,7 @@ type TelegramParams struct {
 
 // PlatformParams contains platform-specific parameters for a post.
 type PlatformParams struct {
-	Facebook       *FacebookParams `json:"facebook,omitempty"`
+	Facebook       *FacebookParams  `json:"facebook,omitempty"`
 	Instagram      *InstagramParams `json:"instagram,omitempty"`
 	TikTok         *TikTokParams    `json:"tiktok,omitempty"`
 	LinkedIn       *LinkedInParams  `json:"linkedin,omitempty"`
@@ -294,14 +294,14 @@ type Webhook struct {
 
 // WebhookDelivery represents a webhook delivery attempt.
 type WebhookDelivery struct {
-	ID             string  `json:"id"`
-	EventID        string  `json:"event_id"`
-	EventType      string  `json:"event_type"`
-	ResponseStatus *int    `json:"response_status"`
-	AttemptNumber  int     `json:"attempt_number"`
-	Success        bool    `json:"success"`
-	AttemptedAt    string  `json:"attempted_at"`
-	CreatedAt      string  `json:"created_at"`
+	ID             string `json:"id"`
+	EventID        string `json:"event_id"`
+	EventType      string `json:"event_type"`
+	ResponseStatus *int   `json:"response_status"`
+	AttemptNumber  int    `json:"attempt_number"`
+	Success        bool   `json:"success"`
+	AttemptedAt    string `json:"attempted_at"`
+	CreatedAt      string `json:"created_at"`
 }
 
 // WebhookCreateOptions contains options for creating a webhook.
@@ -353,23 +353,136 @@ type StatsRecord struct {
 	RecordedAt string         `json:"recorded_at"`
 }
 
+// Attachment represents a media attachment on a comment or message.
+type Attachment struct {
+	ID         string      `json:"id"`
+	Type       string      `json:"type"`
+	URL        *string     `json:"url"`
+	Status     MediaStatus `json:"status"`
+	ExternalID *string     `json:"external_id"`
+}
+
 // Comment represents a comment on a post.
 type Comment struct {
-	ID               string    `json:"id"`
-	ExternalID       *string   `json:"external_id"`
-	Body             string    `json:"body"`
-	Status           string    `json:"status"`
-	AuthorUsername   *string   `json:"author_username"`
-	AuthorAvatarURL  *string   `json:"author_avatar_url"`
-	AuthorExternalID *string   `json:"author_external_id"`
-	ParentExternalID *string   `json:"parent_external_id"`
-	LikeCount        int       `json:"like_count"`
-	IsHidden         bool      `json:"is_hidden"`
-	Permalink        *string   `json:"permalink"`
-	PlatformData     any       `json:"platform_data"`
-	PostedAt         *string   `json:"posted_at"`
-	CreatedAt        string    `json:"created_at"`
-	Replies          []Comment `json:"replies"`
+	ID               string         `json:"id"`
+	ExternalID       *string        `json:"external_id"`
+	Body             string         `json:"body"`
+	Status           string         `json:"status"`
+	AuthorUsername   *string        `json:"author_username"`
+	AuthorAvatarURL  *string        `json:"author_avatar_url"`
+	AuthorExternalID *string        `json:"author_external_id"`
+	Metadata         map[string]any `json:"metadata"`
+	ParentExternalID *string        `json:"parent_external_id"`
+	LikeCount        int            `json:"like_count"`
+	IsHidden         bool           `json:"is_hidden"`
+	Permalink        *string        `json:"permalink"`
+	PlatformData     any            `json:"platform_data"`
+	Attachments      []Attachment   `json:"attachments"`
+	PostedAt         *string        `json:"posted_at"`
+	CreatedAt        string         `json:"created_at"`
+	Replies          []Comment      `json:"replies"`
+}
+
+// Reaction represents an emoji reaction on a message.
+type Reaction struct {
+	SenderExternalID string  `json:"sender_external_id"`
+	Emoji            *string `json:"emoji"`
+	Reaction         *string `json:"reaction"`
+	At               *string `json:"at"`
+}
+
+// Chat represents a direct-message conversation with a participant.
+type Chat struct {
+	ID                     string         `json:"id"`
+	ProfileID              string         `json:"profile_id"`
+	Platform               Platform       `json:"platform"`
+	ParticipantExternalID  string         `json:"participant_external_id"`
+	ParticipantUsername    *string        `json:"participant_username"`
+	ParticipantName        *string        `json:"participant_name"`
+	ParticipantAvatarURL   *string        `json:"participant_avatar_url"`
+	ExternalConversationID *string        `json:"external_conversation_id"`
+	LastInboundAt          *string        `json:"last_inbound_at"`
+	LastOutboundAt         *string        `json:"last_outbound_at"`
+	LastMessageAt          *string        `json:"last_message_at"`
+	Metadata               map[string]any `json:"metadata"`
+	Archived               *bool          `json:"archived,omitempty"`
+	CreatedAt              string         `json:"created_at"`
+}
+
+// Message represents a direct message within a chat.
+type Message struct {
+	ID                  string           `json:"id"`
+	ChatID              string           `json:"chat_id"`
+	ExternalID          *string          `json:"external_id"`
+	Direction           MessageDirection `json:"direction"`
+	Body                *string          `json:"body"`
+	Status              MessageStatus    `json:"status"`
+	Tag                 *string          `json:"tag"`
+	ExternalCommentID   *string          `json:"external_comment_id"`
+	ErrorMessage        *string          `json:"error_message"`
+	PlatformData        map[string]any   `json:"platform_data"`
+	ExternalPostedAt    *string          `json:"external_posted_at"`
+	ExternalDeliveredAt *string          `json:"external_delivered_at"`
+	ExternalReadAt      *string          `json:"external_read_at"`
+	ExternalEditedAt    *string          `json:"external_edited_at"`
+	ReplyToExternalID   *string          `json:"reply_to_external_id"`
+	ReplyMarkup         map[string]any   `json:"reply_markup"`
+	ExternalDeletedAt   *string          `json:"external_deleted_at"`
+	Reactions           []Reaction       `json:"reactions"`
+	Attachments         []Attachment     `json:"attachments"`
+	IsUnsupported       bool             `json:"is_unsupported"`
+	CreatedAt           string           `json:"created_at"`
+}
+
+// ChatListOptions contains options for listing chats.
+type ChatListOptions struct {
+	Page           *int
+	PerPage        *int
+	Before         *string
+	After          *string
+	ProfileGroupID *string
+}
+
+// ChatCreateOptions contains options for creating a chat.
+type ChatCreateOptions struct {
+	ParticipantUsername *string
+	ParticipantName     *string
+	ProfileGroupID      *string
+}
+
+// MessageListOptions contains options for listing messages.
+type MessageListOptions struct {
+	Page           *int
+	PerPage        *int
+	Direction      *MessageDirection
+	Status         *MessageStatus
+	ProfileGroupID *string
+}
+
+// MessageSendOptions contains options for sending a message. If MediaFiles is set,
+// the request uses multipart/form-data (mirrors PostsService.Create).
+type MessageSendOptions struct {
+	Body              *string
+	Media             []string
+	MediaFiles        []string
+	Tag               *string
+	ReplyToExternalID *string
+	ReplyMarkup       map[string]any
+	ProfileGroupID    *string
+}
+
+// MessageEditOptions contains options for editing a message.
+type MessageEditOptions struct {
+	Body           *string
+	ReplyMarkup    map[string]any
+	ProfileGroupID *string
+}
+
+// MessageReactOptions contains options for reacting to a message.
+type MessageReactOptions struct {
+	Reaction       *string
+	Emoji          *string
+	ProfileGroupID *string
 }
 
 // ProfileComment represents a profile-level comment (Google Business review or reply).

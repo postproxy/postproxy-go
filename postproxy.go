@@ -29,6 +29,8 @@ type Client struct {
 	Queues          *QueuesService
 	Comments        *CommentsService
 	ProfileComments *ProfileCommentsService
+	Chats           *ChatsService
+	Messages        *MessagesService
 }
 
 // Option configures the Client.
@@ -72,6 +74,8 @@ func NewClient(apiKey string, opts ...Option) *Client {
 	c.Queues = &QueuesService{client: c}
 	c.Comments = &CommentsService{client: c}
 	c.ProfileComments = &ProfileCommentsService{client: c}
+	c.Chats = &ChatsService{client: c}
+	c.Messages = &MessagesService{client: c}
 	return c
 }
 

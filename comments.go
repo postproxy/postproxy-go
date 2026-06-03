@@ -114,6 +114,25 @@ func (s *CommentsService) Unlike(ctx context.Context, postID, commentID, profile
 	return s.commentAction(ctx, postID, commentID, profileID, "unlike")
 }
 
+// PrivateReply sends a private reply (direct message) to the author of a comment.
+// Returns the created Message (Instagram/Facebook).
+func (s *CommentsService) PrivateReply(ctx context.Context, postID, commentID, profileID, text string) (*Message, error) {
+	params := url.Values{}
+	params.Set("profile_id", profileID)
+
+	path := fmt.Sprintf("/posts/%s/comments/%s/private_reply", postID, commentID)
+	data, err := s.client.request(ctx, http.MethodPost, path, withParams(params), withJSON(map[string]string{"text": text}))
+	if err != nil {
+		return nil, err
+	}
+
+	var result Message
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (s *CommentsService) commentAction(ctx context.Context, postID, commentID, profileID, action string) (*AcceptedResponse, error) {
 	params := url.Values{}
 	params.Set("profile_id", profileID)

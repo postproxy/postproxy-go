@@ -1,20 +1,20 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.9.0"
+const Version = "1.10.0"
 
 // Platform represents a social media platform.
 type Platform string
 
 const (
-	PlatformFacebook  Platform = "facebook"
-	PlatformInstagram Platform = "instagram"
-	PlatformTikTok    Platform = "tiktok"
-	PlatformLinkedIn  Platform = "linkedin"
-	PlatformYouTube   Platform = "youtube"
-	PlatformTwitter   Platform = "twitter"
-	PlatformThreads   Platform = "threads"
-	PlatformPinterest Platform = "pinterest"
+	PlatformFacebook       Platform = "facebook"
+	PlatformInstagram      Platform = "instagram"
+	PlatformTikTok         Platform = "tiktok"
+	PlatformLinkedIn       Platform = "linkedin"
+	PlatformYouTube        Platform = "youtube"
+	PlatformTwitter        Platform = "twitter"
+	PlatformThreads        Platform = "threads"
+	PlatformPinterest      Platform = "pinterest"
 	PlatformBluesky        Platform = "bluesky"
 	PlatformTelegram       Platform = "telegram"
 	PlatformGoogleBusiness Platform = "google_business"
@@ -24,12 +24,12 @@ const (
 type PostStatus string
 
 const (
-	PostStatusPending    PostStatus = "pending"
-	PostStatusDraft      PostStatus = "draft"
-	PostStatusProcessing PostStatus = "processing"
-	PostStatusProcessed              PostStatus = "processed"
-	PostStatusScheduled              PostStatus = "scheduled"
-	PostStatusMediaProcessingFailed  PostStatus = "media_processing_failed"
+	PostStatusPending               PostStatus = "pending"
+	PostStatusDraft                 PostStatus = "draft"
+	PostStatusProcessing            PostStatus = "processing"
+	PostStatusProcessed             PostStatus = "processed"
+	PostStatusScheduled             PostStatus = "scheduled"
+	PostStatusMediaProcessingFailed PostStatus = "media_processing_failed"
 )
 
 // MediaStatus represents the processing status of a media attachment.
@@ -126,10 +126,10 @@ const (
 type TikTokPrivacy string
 
 const (
-	TikTokPrivacyPublic            TikTokPrivacy = "PUBLIC_TO_EVERYONE"
-	TikTokPrivacyMutualFollows     TikTokPrivacy = "MUTUAL_FOLLOW_FRIENDS"
-	TikTokPrivacyFollowers         TikTokPrivacy = "FOLLOWER_OF_CREATOR"
-	TikTokPrivacySelfOnly          TikTokPrivacy = "SELF_ONLY"
+	TikTokPrivacyPublic        TikTokPrivacy = "PUBLIC_TO_EVERYONE"
+	TikTokPrivacyMutualFollows TikTokPrivacy = "MUTUAL_FOLLOW_FRIENDS"
+	TikTokPrivacyFollowers     TikTokPrivacy = "FOLLOWER_OF_CREATOR"
+	TikTokPrivacySelfOnly      TikTokPrivacy = "SELF_ONLY"
 )
 
 // YouTubePrivacy represents the privacy setting for a YouTube post.
@@ -163,21 +163,50 @@ const (
 	TelegramParseModeMarkdownV2 TelegramParseMode = "MarkdownV2"
 )
 
+// MessageDirection represents the direction of a direct message.
+type MessageDirection string
+
+const (
+	MessageDirectionInbound  MessageDirection = "inbound"
+	MessageDirectionOutbound MessageDirection = "outbound"
+)
+
+// MessageStatus represents the delivery status of a direct message.
+type MessageStatus string
+
+const (
+	MessageStatusPending               MessageStatus = "pending"
+	MessageStatusPublished             MessageStatus = "published"
+	MessageStatusFailedWaitingForRetry MessageStatus = "failed_waiting_for_retry"
+	MessageStatusFailed                MessageStatus = "failed"
+	MessageStatusReceived              MessageStatus = "received"
+)
+
 // WebhookEventType is the discriminator for webhook events.
 type WebhookEventType string
 
 const (
-	EventPostProcessed                 WebhookEventType = "post.processed"
-	EventPostImported                  WebhookEventType = "post.imported"
-	EventPlatformPostPublished         WebhookEventType = "platform_post.published"
-	EventPlatformPostFailed            WebhookEventType = "platform_post.failed"
+	EventPostProcessed                  WebhookEventType = "post.processed"
+	EventPostImported                   WebhookEventType = "post.imported"
+	EventPlatformPostPublished          WebhookEventType = "platform_post.published"
+	EventPlatformPostFailed             WebhookEventType = "platform_post.failed"
 	EventPlatformPostFailedWaitingRetry WebhookEventType = "platform_post.failed_waiting_for_retry"
-	EventPlatformPostInsights          WebhookEventType = "platform_post.insights"
-	EventProfileConnected              WebhookEventType = "profile.connected"
-	EventProfileDisconnected           WebhookEventType = "profile.disconnected"
-	EventProfileStats                  WebhookEventType = "profile.stats"
-	EventMediaFailed                   WebhookEventType = "media.failed"
-	EventCommentCreated                WebhookEventType = "comment.created"
+	EventPlatformPostInsights           WebhookEventType = "platform_post.insights"
+	EventProfileConnected               WebhookEventType = "profile.connected"
+	EventProfileDisconnected            WebhookEventType = "profile.disconnected"
+	EventProfileStats                   WebhookEventType = "profile.stats"
+	EventMediaFailed                    WebhookEventType = "media.failed"
+	EventCommentCreated                 WebhookEventType = "comment.created"
+	EventProfileCommentCreated          WebhookEventType = "profile_comment.created"
+	EventMessageReceived                WebhookEventType = "message.received"
+	EventMessageSent                    WebhookEventType = "message.sent"
+	EventMessageDelivered               WebhookEventType = "message.delivered"
+	EventMessageRead                    WebhookEventType = "message.read"
+	EventMessageEdited                  WebhookEventType = "message.edited"
+	EventMessageDeleted                 WebhookEventType = "message.deleted"
+	EventMessageFailedWaitingForRetry   WebhookEventType = "message.failed_waiting_for_retry"
+	EventMessageFailed                  WebhookEventType = "message.failed"
+	EventReactionReceived               WebhookEventType = "reaction.received"
 )
 
 // WebhookEventTypes is the set of all known webhook event types.
@@ -193,4 +222,14 @@ var WebhookEventTypes = []WebhookEventType{
 	EventProfileStats,
 	EventMediaFailed,
 	EventCommentCreated,
+	EventProfileCommentCreated,
+	EventMessageReceived,
+	EventMessageSent,
+	EventMessageDelivered,
+	EventMessageRead,
+	EventMessageEdited,
+	EventMessageDeleted,
+	EventMessageFailedWaitingForRetry,
+	EventMessageFailed,
+	EventReactionReceived,
 }

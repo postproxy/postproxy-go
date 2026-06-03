@@ -297,7 +297,7 @@ valid := postproxy.VerifyWebhookSignature(
 
 Subscribe to any of these events (or pass `[]string{"*"}` for all):
 
-`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `media.failed`, `comment.created`.
+`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `media.failed`, `comment.created`, `profile_comment.created`, `message.received`, `message.sent`, `message.delivered`, `message.read`, `message.edited`, `message.deleted`, `message.failed_waiting_for_retry`, `message.failed`, `reaction.received`.
 
 `ParseWebhookEvent` validates the envelope; the `As*` helpers decode `Data` into a typed payload:
 
@@ -317,8 +317,26 @@ case postproxy.EventPlatformPostPublished:
 case postproxy.EventCommentCreated:
 	data, _ := event.AsCommentCreated()
 	fmt.Println(*data.AuthorUsername, ":", data.Body)
+case postproxy.EventMessageReceived,
+	postproxy.EventMessageSent,
+	postproxy.EventMessageDelivered,
+	postproxy.EventMessageRead,
+	postproxy.EventMessageEdited,
+	postproxy.EventMessageDeleted,
+	postproxy.EventMessageFailedWaitingForRetry,
+	postproxy.EventMessageFailed:
+	data, _ := event.AsMessage()
+	fmt.Println(data.Message.Direction, data.Message.ID)
+case postproxy.EventReactionReceived:
+	data, _ := event.AsReaction()
+	fmt.Println(data.Action, *data.Emoji)
+case postproxy.EventProfileCommentCreated:
+	data, _ := event.AsProfileCommentCreated()
+	fmt.Println(data.ID, ":", data.Body)
 }
 ```
+
+The typed payloads `MessageEventData` (the 8 `message.*` events), `ReactionEventData` (`reaction.received`), and `ProfileCommentCreatedData` (`profile_comment.created`) each embed the relevant resource. `MessageEventData` and `ReactionEventData` carry a full `Message` in their `Message` field.
 
 ### Comments
 
@@ -366,6 +384,80 @@ client.Comments.Unhide(ctx, "post-id", "comment-id", "profile-id")
 // Like / unlike a comment
 client.Comments.Like(ctx, "post-id", "comment-id", "profile-id")
 client.Comments.Unlike(ctx, "post-id", "comment-id", "profile-id")
+```
+
+Comments may carry media `Attachments` (`[]Attachment`) and author signals in `Metadata` (`map[string]any`):
+
+```go
+for _, att := range comment.Attachments {
+	fmt.Printf("%s -> %v (%s)\n", att.Type, att.URL, att.Status)
+}
+if verified, ok := comment.Metadata["is_verified_user"].(bool); ok && verified {
+	fmt.Println("verified author")
+}
+```
+
+Reply privately to a comment via direct message (Instagram/Facebook). This returns a `*Message`, not a comment:
+
+```go
+msg, err := client.Comments.PrivateReply(ctx, "post-id", "comment-id", "profile-id", "Thanks — DM-ing you the details.")
+fmt.Println(msg.ID, msg.ChatID, msg.Status)
+```
+
+### Direct Messages
+
+Manage direct-message conversations (chats) and the messages within them across Facebook, Instagram, Telegram, and Bluesky.
+
+```go
+// List chats for a profile (paginated)
+perPage := 20
+chats, err := client.Chats.List(ctx, "profile-id", &postproxy.ChatListOptions{PerPage: &perPage})
+for _, chat := range chats.Data {
+	fmt.Printf("%v (%s)\n", chat.ParticipantUsername, chat.Platform)
+}
+
+// Find or create a chat with a participant
+username := "jane_doe"
+chat, err := client.Chats.Create(ctx, "profile-id", "igsid_8675309", &postproxy.ChatCreateOptions{
+	ParticipantUsername: &username,
+})
+
+// Get a single chat
+chat, err = client.Chats.Get(ctx, chat.ID, nil)
+
+// Archive / unarchive a chat (Bluesky only)
+client.Chats.Archive(ctx, chat.ID, nil)
+client.Chats.Unarchive(ctx, chat.ID, nil)
+
+// List messages in a chat
+dir := postproxy.MessageDirectionInbound
+messages, err := client.Messages.List(ctx, chat.ID, &postproxy.MessageListOptions{Direction: &dir})
+for _, msg := range messages.Data {
+	fmt.Printf("[%s] %v\n", msg.Direction, msg.Body)
+}
+
+// Send a text message
+body := "Yes, we ship worldwide!"
+sent, err := client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{Body: &body})
+
+// Send outside the 24h window with a tag (Facebook/Instagram)
+tag := "HUMAN_AGENT"
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{Body: &body, Tag: &tag})
+
+// Send media by hosted URL, or from a local file (multipart)
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{Media: []string{"https://cdn.example.com/photo.png"}})
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{MediaFiles: []string{"./photo.png"}})
+
+// Get / edit a message (edit is Telegram only)
+msg, err := client.Messages.Get(ctx, sent.ID, nil)
+updated := "Updated answer."
+client.Messages.Edit(ctx, sent.ID, &postproxy.MessageEditOptions{Body: &updated})
+
+// React / unreact (Facebook & Instagram)
+reaction := "love"
+emoji := "❤️"
+client.Messages.React(ctx, sent.ID, &postproxy.MessageReactOptions{Reaction: &reaction, Emoji: &emoji})
+client.Messages.Unreact(ctx, sent.ID, nil)
 ```
 
 ### Profile comments (Google Business reviews)

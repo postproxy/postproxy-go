@@ -57,6 +57,86 @@ func TestCommentsList(t *testing.T) {
 	}
 }
 
+func TestCommentsListWithAttachmentsAndMetadata(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total": 1, "page": 0, "per_page": 20,
+			"data": []map[string]any{
+				{
+					"id": "cmt_abc123", "body": "Check this out", "status": "synced",
+					"like_count": 0, "is_hidden": false, "created_at": "2026-03-25T10:01:00Z",
+					"metadata": map[string]any{"is_verified_user": true, "follower_count": 1200},
+					"attachments": []map[string]any{
+						{"id": "att_1", "type": "image", "url": "https://cdn.example.com/x.jpg", "status": "processed", "external_id": nil},
+					},
+					"replies": []any{},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	result, err := c.Comments.List(context.Background(), "post1", "prof1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cmt := result.Data[0]
+	if got, _ := cmt.Metadata["follower_count"].(float64); got != 1200 {
+		t.Errorf("expected follower_count 1200, got %v", cmt.Metadata["follower_count"])
+	}
+	if len(cmt.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(cmt.Attachments))
+	}
+	if cmt.Attachments[0].Type != "image" {
+		t.Errorf("expected attachment type image, got %s", cmt.Attachments[0].Type)
+	}
+	if cmt.Attachments[0].Status != MediaStatusProcessed {
+		t.Errorf("expected attachment status processed, got %s", cmt.Attachments[0].Status)
+	}
+}
+
+func TestCommentsPrivateReply(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/posts/post1/comments/cmt_abc123/private_reply" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("profile_id") != "prof1" {
+			t.Errorf("expected profile_id=prof1, got %s", r.URL.Query().Get("profile_id"))
+		}
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]string
+		_ = json.Unmarshal(body, &req)
+		if req["text"] != "DM-ing you the details." {
+			t.Errorf("unexpected text: %s", req["text"])
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "msg_222", "chat_id": "chat_xyz789", "direction": "outbound",
+			"status": "pending", "external_comment_id": "17858893269123456",
+			"reactions": []any{}, "attachments": []any{},
+			"is_unsupported": false, "created_at": "2026-05-31T15:30:05.000Z",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	msg, err := c.Comments.PrivateReply(context.Background(), "post1", "cmt_abc123", "prof1", "DM-ing you the details.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.ID != "msg_222" {
+		t.Errorf("expected id msg_222, got %s", msg.ID)
+	}
+	if msg.ExternalCommentID == nil || *msg.ExternalCommentID != "17858893269123456" {
+		t.Errorf("unexpected external_comment_id: %v", msg.ExternalCommentID)
+	}
+}
+
 func TestCommentsListWithPagination(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") != "2" {

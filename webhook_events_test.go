@@ -125,6 +125,106 @@ func TestParseWebhookEvent_CommentCreated(t *testing.T) {
 	}
 }
 
+func mockMessage() map[string]any {
+	return map[string]any{
+		"id": "msg_1", "chat_id": "chat_1", "external_id": "mid.1",
+		"direction": "inbound", "body": "hi", "status": "received",
+		"reactions": []any{}, "attachments": []any{},
+		"is_unsupported": false, "created_at": "2026-06-01T00:00:00Z",
+	}
+}
+
+func TestParseWebhookEvent_MessageVariants(t *testing.T) {
+	for _, eventType := range []WebhookEventType{
+		EventMessageReceived,
+		EventMessageSent,
+		EventMessageDelivered,
+		EventMessageRead,
+		EventMessageEdited,
+		EventMessageDeleted,
+		EventMessageFailedWaitingForRetry,
+		EventMessageFailed,
+	} {
+		body := envelope(t, string(eventType), map[string]any{"message": mockMessage()})
+		event, err := ParseWebhookEvent(body)
+		if err != nil {
+			t.Fatalf("type %s: %v", eventType, err)
+		}
+		if event.Type != eventType {
+			t.Errorf("expected %q, got %q", eventType, event.Type)
+		}
+		data, err := event.AsMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data.Message.ID != "msg_1" {
+			t.Errorf("unexpected message: %+v", data.Message)
+		}
+	}
+}
+
+func TestParseWebhookEvent_ReactionReceived(t *testing.T) {
+	msg := mockMessage()
+	msg["reactions"] = []map[string]any{
+		{"sender_external_id": "psid_123", "emoji": "❤️", "reaction": "love", "at": "2026-06-01T15:02:00Z"},
+	}
+	body := envelope(t, "reaction.received", map[string]any{
+		"message":            msg,
+		"sender_external_id": "psid_123",
+		"action":             "react",
+		"reaction":           "love",
+		"emoji":              "❤️",
+		"occurred_at":        "2026-06-01T15:02:00Z",
+	})
+	event, err := ParseWebhookEvent(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != EventReactionReceived {
+		t.Errorf("expected reaction.received, got %q", event.Type)
+	}
+	data, err := event.AsReaction()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Action != "react" {
+		t.Errorf("expected action react, got %q", data.Action)
+	}
+	if len(data.Message.Reactions) != 1 || data.Message.Reactions[0].Reaction == nil || *data.Message.Reactions[0].Reaction != "love" {
+		t.Errorf("unexpected reactions: %+v", data.Message.Reactions)
+	}
+}
+
+func TestParseWebhookEvent_ProfileCommentCreated(t *testing.T) {
+	body := envelope(t, "profile_comment.created", map[string]any{
+		"id": "abc123", "profile_id": "prof123", "platform": "google_business",
+		"placement_id":       "accounts/1/locations/2",
+		"external_id":        "accounts/1/locations/2/reviews/A",
+		"parent_external_id": nil, "body": "Great coffee!", "status": "synced",
+		"author_username": "Jane D.", "author_avatar_url": nil,
+		"platform_data": map[string]any{"star_rating": 5},
+		"posted_at":     "2026-05-10T11:55:00Z",
+		"created_at":    "2026-05-13T18:00:00Z",
+	})
+	event, err := ParseWebhookEvent(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != EventProfileCommentCreated {
+		t.Errorf("expected profile_comment.created, got %q", event.Type)
+	}
+	data, err := event.AsProfileCommentCreated()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.ID != "abc123" {
+		t.Errorf("expected id abc123, got %s", data.ID)
+	}
+	if got, _ := data.PlatformData["star_rating"].(float64); got != 5 {
+		t.Errorf("expected star_rating 5, got %v", data.PlatformData["star_rating"])
+	}
+}
+
 func TestParseWebhookEvent_UnknownType(t *testing.T) {
 	body := envelope(t, "foo.bar", map[string]any{})
 	_, err := ParseWebhookEvent(body)

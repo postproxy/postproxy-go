@@ -54,6 +54,21 @@ func (e *WebhookEvent) AsCommentCreated() (*CommentCreatedData, error) {
 	return decodeAs[CommentCreatedData](e.Data)
 }
 
+// AsMessage decodes Data as a MessageEventData. Use for message.* events.
+func (e *WebhookEvent) AsMessage() (*MessageEventData, error) {
+	return decodeAs[MessageEventData](e.Data)
+}
+
+// AsReaction decodes Data as a ReactionEventData. Use when Type == EventReactionReceived.
+func (e *WebhookEvent) AsReaction() (*ReactionEventData, error) {
+	return decodeAs[ReactionEventData](e.Data)
+}
+
+// AsProfileCommentCreated decodes Data as a ProfileCommentCreatedData. Use when Type == EventProfileCommentCreated.
+func (e *WebhookEvent) AsProfileCommentCreated() (*ProfileCommentCreatedData, error) {
+	return decodeAs[ProfileCommentCreatedData](e.Data)
+}
+
 func decodeAs[T any](raw json.RawMessage) (*T, error) {
 	var out T
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -101,16 +116,16 @@ type PostImportedData struct {
 
 // PlatformPostData is the payload shared by platform_post.* events.
 type PlatformPostData struct {
-	ID            string             `json:"id"`
-	PostID        string             `json:"post_id"`
-	Platform      Platform           `json:"platform"`
-	ProfileID     string             `json:"profile_id"`
-	ProfileName   string             `json:"profile_name"`
-	Status        PlatformPostStatus `json:"status"`
-	Error         *string            `json:"error"`
-	ErrorDetails  *ErrorDetails      `json:"error_details"`
-	PlatformID    *string            `json:"platform_id"`
-	Insights      map[string]any     `json:"insights,omitempty"`
+	ID           string             `json:"id"`
+	PostID       string             `json:"post_id"`
+	Platform     Platform           `json:"platform"`
+	ProfileID    string             `json:"profile_id"`
+	ProfileName  string             `json:"profile_name"`
+	Status       PlatformPostStatus `json:"status"`
+	Error        *string            `json:"error"`
+	ErrorDetails *ErrorDetails      `json:"error_details"`
+	PlatformID   *string            `json:"platform_id"`
+	Insights     map[string]any     `json:"insights,omitempty"`
 }
 
 // ProfileEventData is the payload of profile.connected and profile.disconnected events.
@@ -160,6 +175,38 @@ type CommentCreatedData struct {
 	ReplyCount       int            `json:"reply_count"`
 	IsHidden         bool           `json:"is_hidden"`
 	Permalink        *string        `json:"permalink"`
+	PlatformData     map[string]any `json:"platform_data"`
+	PostedAt         *string        `json:"posted_at"`
+	CreatedAt        string         `json:"created_at"`
+}
+
+// MessageEventData is the payload shared by all message.* events.
+type MessageEventData struct {
+	Message Message `json:"message"`
+}
+
+// ReactionEventData is the payload of a reaction.received event.
+type ReactionEventData struct {
+	Message          Message `json:"message"`
+	SenderExternalID string  `json:"sender_external_id"`
+	Action           string  `json:"action"`
+	Reaction         *string `json:"reaction"`
+	Emoji            *string `json:"emoji"`
+	OccurredAt       *string `json:"occurred_at"`
+}
+
+// ProfileCommentCreatedData is the payload of a profile_comment.created event.
+type ProfileCommentCreatedData struct {
+	ID               string         `json:"id"`
+	ProfileID        string         `json:"profile_id"`
+	Platform         Platform       `json:"platform"`
+	PlacementID      *string        `json:"placement_id"`
+	ExternalID       *string        `json:"external_id"`
+	ParentExternalID *string        `json:"parent_external_id"`
+	Body             string         `json:"body"`
+	Status           string         `json:"status"`
+	AuthorUsername   *string        `json:"author_username"`
+	AuthorAvatarURL  *string        `json:"author_avatar_url"`
 	PlatformData     map[string]any `json:"platform_data"`
 	PostedAt         *string        `json:"posted_at"`
 	CreatedAt        string         `json:"created_at"`
