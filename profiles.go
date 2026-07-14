@@ -105,6 +105,88 @@ func (s *ProfilesService) Placements(ctx context.Context, id string, opts *Reque
 	return &result, nil
 }
 
+// AssignPlacementToGroup moves a placement (e.g. a Facebook Page, Telegram
+// channel, or Google Business location) to another profile group. placementID
+// is the placement's external ID as returned by Placements.
+func (s *ProfilesService) AssignPlacementToGroup(ctx context.Context, id, placementID, targetProfileGroupID string, opts *RequestOptions) (*Placement, error) {
+	reqOpts := []requestOption{withJSON(map[string]any{
+		"placement_id":            placementID,
+		"target_profile_group_id": targetProfileGroupID,
+	})}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPatch, "/profiles/"+id+"/assign_placement_to_group", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Placement
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// IceBreakers returns the DM ice breakers for a profile. Supported for
+// Instagram profiles only.
+func (s *ProfilesService) IceBreakers(ctx context.Context, id string, opts *RequestOptions) (*IceBreakersResponse, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/ice_breakers", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result IceBreakersResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// SetIceBreakers replaces the DM ice breakers for a profile (1-4 items).
+func (s *ProfilesService) SetIceBreakers(ctx context.Context, id string, iceBreakers []IceBreaker, opts *RequestOptions) (*SuccessResponse, error) {
+	reqOpts := []requestOption{withJSON(map[string]any{"ice_breakers": iceBreakers})}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPost, "/profiles/"+id+"/ice_breakers", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result SuccessResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteIceBreakers removes all DM ice breakers from a profile.
+func (s *ProfilesService) DeleteIceBreakers(ctx context.Context, id string, opts *RequestOptions) (*SuccessResponse, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodDelete, "/profiles/"+id+"/ice_breakers", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result SuccessResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Delete deletes a profile by ID.
 func (s *ProfilesService) Delete(ctx context.Context, id string, opts *RequestOptions) (*SuccessResponse, error) {
 	var reqOpts []requestOption

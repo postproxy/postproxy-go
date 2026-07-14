@@ -29,7 +29,7 @@ func TestClient_UserAgentHeader(t *testing.T) {
 }
 
 func TestVersionConstant(t *testing.T) {
-	if Version != "1.10.0" {
-		t.Errorf("expected Version 1.10.0, got %q", Version)
+	if Version != "1.11.0" {
+		t.Errorf("expected Version 1.11.0, got %q", Version)
 	}
 }

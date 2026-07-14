@@ -92,8 +92,22 @@ type Post struct {
 
 // Placement represents a placement option for a profile.
 type Placement struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	// ProfileGroupID is set in the response of AssignPlacementToGroup.
+	ProfileGroupID string `json:"profile_group_id,omitempty"`
+}
+
+// IceBreaker represents an Instagram DM ice breaker (FAQ prompt).
+type IceBreaker struct {
+	Question string `json:"question"`
+	Payload  string `json:"payload"`
+}
+
+// IceBreakersResponse represents the response from listing ice breakers.
+type IceBreakersResponse struct {
+	IceBreakers []IceBreaker `json:"ice_breakers"`
 }
 
 // ListResponse is a generic response containing a list of items.
@@ -249,6 +263,10 @@ type ThreadsParams struct {
 // TwitterParams contains Twitter-specific post parameters.
 type TwitterParams struct {
 	Format *TwitterFormat `json:"format,omitempty"`
+	// PollOptions is required when Format is "poll": 2-4 options, max 25 characters each.
+	PollOptions []string `json:"poll_options,omitempty"`
+	// PollDurationMinutes is required when Format is "poll": 5 to 10080 minutes (7 days).
+	PollDurationMinutes *int `json:"poll_duration_minutes,omitempty"`
 }
 
 // BlueskyParams contains Bluesky-specific post parameters.

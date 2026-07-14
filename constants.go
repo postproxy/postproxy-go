@@ -1,7 +1,7 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.10.0"
+const Version = "1.11.0"
 
 // Platform represents a social media platform.
 type Platform string
@@ -120,6 +120,7 @@ type TwitterFormat string
 
 const (
 	TwitterFormatPost TwitterFormat = "post"
+	TwitterFormatPoll TwitterFormat = "poll"
 )
 
 // TikTokPrivacy represents the privacy setting for a TikTok post.

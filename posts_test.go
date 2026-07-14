@@ -251,6 +251,47 @@ func TestPostsCreate_PlatformParams(t *testing.T) {
 	}
 }
 
+func TestPostsCreate_TwitterPoll(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+
+		platforms, _ := payload["platforms"].(map[string]any)
+		tw, _ := platforms["twitter"].(map[string]any)
+		if tw["format"] != "poll" {
+			t.Errorf("expected twitter format %q, got %v", "poll", tw["format"])
+		}
+		options, _ := tw["poll_options"].([]any)
+		if len(options) != 3 || options[0] != "Rails" {
+			t.Errorf("unexpected poll_options: %v", tw["poll_options"])
+		}
+		if tw["poll_duration_minutes"] != float64(1440) {
+			t.Errorf("expected poll_duration_minutes 1440, got %v", tw["poll_duration_minutes"])
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(Post{ID: "post-poll"})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	twFmt := TwitterFormatPoll
+	duration := 1440
+	_, err := c.Posts.Create(context.Background(), "Which framework?", []string{"p1"}, &PostCreateOptions{
+		Platforms: &PlatformParams{
+			Twitter: &TwitterParams{
+				Format:              &twFmt,
+				PollOptions:         []string{"Rails", "Django", "Laravel"},
+				PollDurationMinutes: &duration,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestPostsPublishDraft(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

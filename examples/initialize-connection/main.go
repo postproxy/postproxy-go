@@ -48,4 +48,21 @@ func main() {
 		log.Fatalf("failed to initialize connection: %v", err)
 	}
 	fmt.Printf("Connect your Instagram account: %s\n", conn.URL)
+
+	// After connecting, list a profile's placements (Pages, channels, locations)
+	placements, err := client.Profiles.Placements(ctx, "profile-id", nil)
+	if err != nil {
+		log.Fatalf("failed to list placements: %v", err)
+	}
+	for _, p := range placements.Data {
+		fmt.Printf("Placement: %s (%s)\n", p.Name, p.ID)
+	}
+
+	// Move one placement to a different profile group
+	if len(placements.Data) > 0 {
+		_, err = client.Profiles.AssignPlacementToGroup(ctx, "profile-id", placements.Data[0].ID, "other-group-id", nil)
+		if err != nil {
+			log.Fatalf("failed to assign placement: %v", err)
+		}
+	}
 }

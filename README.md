@@ -112,6 +112,19 @@ post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postpr
 	},
 })
 
+// Create a Twitter poll (2-4 options, max 25 chars each; 5-10080 minutes)
+pollFormat := postproxy.TwitterFormatPoll
+pollDuration := 1440
+post, err = client.Posts.Create(ctx, "Which framework?", []string{"twitter"}, &postproxy.PostCreateOptions{
+	Platforms: &postproxy.PlatformParams{
+		Twitter: &postproxy.TwitterParams{
+			Format:              &pollFormat,
+			PollOptions:         []string{"Rails", "Django", "Laravel"},
+			PollDurationMinutes: &pollDuration,
+		},
+	},
+})
+
 // Create a thread post
 post, err := client.Posts.Create(ctx, "Thread starts here", []string{"profile-id"}, &postproxy.PostCreateOptions{
 	Thread: []postproxy.ThreadChildInput{
@@ -495,6 +508,20 @@ profile, err := client.Profiles.Get(ctx, "profile-id", nil)
 
 // Get placements
 placements, err := client.Profiles.Placements(ctx, "profile-id", nil)
+
+// Move a placement (e.g. a Facebook Page or Telegram channel) to another group
+placement, err := client.Profiles.AssignPlacementToGroup(ctx, "profile-id", "placement-external-id", "pg-other", nil)
+fmt.Println(placement.ProfileGroupID) // "pg-other"
+
+// Ice breakers (Instagram DMs): FAQ prompts shown when a user opens a chat
+iceBreakers, err := client.Profiles.IceBreakers(ctx, "profile-id", nil)
+
+_, err = client.Profiles.SetIceBreakers(ctx, "profile-id", []postproxy.IceBreaker{
+	{Question: "What services do you offer?", Payload: "services"},
+	{Question: "What are your hours?", Payload: "hours"},
+}, nil) // 1-4 items
+
+_, err = client.Profiles.DeleteIceBreakers(ctx, "profile-id", nil)
 
 // Delete a profile
 result, err := client.Profiles.Delete(ctx, "profile-id", nil)

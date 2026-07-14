@@ -105,4 +105,21 @@ func main() {
 		log.Fatalf("Error sending private reply: %v", err)
 	}
 	fmt.Printf("Private reply queued: %s (chat: %s)\n", reply.ID, reply.ChatID)
+
+	// Ice breakers (Instagram only): FAQ prompts shown when a user opens a chat
+	_, err = client.Profiles.SetIceBreakers(ctx, profileID, []postproxy.IceBreaker{
+		{Question: "What services do you offer?", Payload: "services"},
+		{Question: "What are your hours?", Payload: "hours"},
+	}, nil)
+	if err != nil {
+		log.Fatalf("Error setting ice breakers: %v", err)
+	}
+	iceBreakers, err := client.Profiles.IceBreakers(ctx, profileID, nil)
+	if err != nil {
+		log.Fatalf("Error listing ice breakers: %v", err)
+	}
+	for _, ib := range iceBreakers.IceBreakers {
+		fmt.Printf("Ice breaker: %s\n", ib.Question)
+	}
+	// _, _ = client.Profiles.DeleteIceBreakers(ctx, profileID, nil)
 }

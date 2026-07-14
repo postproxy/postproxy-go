@@ -83,4 +83,21 @@ func main() {
 		log.Fatalf("failed to create thread: %v", err)
 	}
 	fmt.Printf("Created thread: %s (%d children)\n", post.ID, len(post.Thread))
+
+	// Twitter poll: 2-4 options (max 25 chars each), 5-10080 minutes
+	pollFormat := postproxy.TwitterFormatPoll
+	pollDuration := 1440
+	post, err = client.Posts.Create(ctx, "Which framework?", []string{"twitter"}, &postproxy.PostCreateOptions{
+		Platforms: &postproxy.PlatformParams{
+			Twitter: &postproxy.TwitterParams{
+				Format:              &pollFormat,
+				PollOptions:         []string{"Rails", "Django", "Laravel", "Other"},
+				PollDurationMinutes: &pollDuration,
+			},
+		},
+	})
+	if err != nil {
+		log.Fatalf("failed to create poll: %v", err)
+	}
+	fmt.Printf("Created poll post: %s\n", post.ID)
 }
