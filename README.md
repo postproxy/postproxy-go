@@ -61,6 +61,38 @@ client := postproxy.NewClient("key", postproxy.WithHTTPClient(&http.Client{
 client := postproxy.NewClient("key", postproxy.WithProfileGroupID("pg-123"))
 ```
 
+### Idempotency
+
+`WithIdempotencyKey` returns a context that carries an `Idempotency-Key` header on every
+write request (`POST`/`PUT`/`PATCH`/`DELETE`) made with it. If the connection drops before
+you see the response, retry with the same key and you get the original response back
+instead of a second post:
+
+```go
+ctx := postproxy.WithIdempotencyKey(context.Background(), uuid.NewString())
+
+post, err := client.Posts.Create(ctx, "Hello", []string{"profile-id"}, nil)
+
+// Retrying the same call with the same context replays the original response.
+```
+
+The key rides on the context rather than each method's options struct, so it works
+uniformly across every write without changing any signature. Use a fresh key — and a fresh
+context — per logical operation; a UUID is ideal. Keys are scoped to your account and may
+be up to 255 characters. The SDK never generates keys or retries for you.
+
+| Situation | Result |
+|---|---|
+| First request with the key | Runs normally |
+| Retry after a success | Original status and body replayed |
+| Retry while the first is still running | 409 — `IsConflictError(err)`; wait and retry |
+| Same key, different request body | 422 — `IsValidationError(err)` |
+| Retry after an error response | Runs normally — errors are not replayed |
+
+Only successful (`2xx`) responses are stored, so a request that failed validation or hit a
+quota leaves the key free — fix the payload and retry with the same key. Stored responses
+are kept for **24 hours**. Requests made with a plain context are unaffected.
+
 ## Resources
 
 ### Posts
@@ -91,10 +123,20 @@ post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postpr
 igFormat := postproxy.InstagramFormatReel
 parseMode := postproxy.TelegramParseModeHTML
 disablePreview := true
+tagX, tagY := 0.5, 0.4
+slide := 2
 post, err := client.Posts.Create(ctx, "Caption", []string{"profile-id"}, &postproxy.PostCreateOptions{
 	Platforms: &postproxy.PlatformParams{
 		Instagram: &postproxy.InstagramParams{
 			Format: &igFormat,
+			// Tag public Instagram accounts. Images require X and Y (floats
+			// 0.0–1.0 from the top-left corner); reels and video slides are
+			// tagged by username only. MediaIndex picks the carousel slide
+			// (0-based, defaults to 0).
+			UserTags: []postproxy.InstagramUserTag{
+				{Username: "natgeo", X: &tagX, Y: &tagY},
+				{Username: "spacex", MediaIndex: &slide},
+			},
 		},
 		Telegram: &postproxy.TelegramParams{
 			ChatID:             "-1001234567890",
@@ -371,6 +413,16 @@ comments, err := client.Comments.List(ctx, "post-id", "profile-id", &postproxy.C
 	PerPage: &perPage,
 })
 
+// Filter by when PostProxy received the comment (created_at, not posted_at).
+// A bare date means that date's start of day. Applies to top-level comments —
+// one in range brings its full Replies slice with it.
+from := "2026-03-25"
+to := "2026-03-26T12:00:00Z"
+recent, err := client.Comments.List(ctx, "post-id", "profile-id", &postproxy.CommentListOptions{
+	From: &from,
+	To:   &to,
+})
+
 // Get a single comment
 comment, err := client.Comments.Get(ctx, "post-id", "comment-id", "profile-id")
 
@@ -416,6 +468,39 @@ Reply privately to a comment via direct message (Instagram/Facebook). This retur
 msg, err := client.Comments.PrivateReply(ctx, "post-id", "comment-id", "profile-id", "Thanks — DM-ing you the details.")
 fmt.Println(msg.ID, msg.ChatID, msg.Status)
 ```
+
+#### Comments across posts
+
+`Comments.ListAll` returns comments spanning every post in the profile group in one
+request — the comments counterpart to `Posts.Stats`. Every filter is optional.
+
+**This list is flat.** Unlike the per-post list, replies are not nested: every comment,
+top-level or reply, is its own entry linked to its parent by `ParentExternalID`, so `Total`
+counts every comment and paging is exact. Entries are `BulkComment`, which adds `PostID`,
+`ProfileID`, and `Platform` and drops `Replies`.
+
+```go
+perPage := 50
+all, err := client.Comments.ListAll(ctx, &postproxy.BulkCommentListOptions{
+	Profiles: []string{"instagram", "prof-abc"},  // profile IDs or network names, mixed
+	PostIDs:  []string{"post-1", "post-2"},       // omit for every post in scope
+	From:     &from,
+	PerPage:  &perPage,                           // max 100
+})
+
+for _, c := range all.Data {
+	// Each entry says where it came from, so you can act on it with the
+	// post-scoped methods above.
+	fmt.Println(c.Platform, c.PostID, c.ProfileID, c.Body)
+
+	if c.ParentExternalID != nil {
+		fmt.Println("  ↳ reply to", *c.ParentExternalID)
+	}
+}
+```
+
+Unknown or out-of-scope IDs in `PostIDs` and `Profiles` are ignored rather than erroring.
+Results are ordered newest first by receipt time.
 
 ### Direct Messages
 
@@ -542,6 +627,83 @@ bsky, err := client.Profiles.GetProfileStats(ctx, "prof_bsky_001", nil)
 fmt.Println(bsky.Data.Records[len(bsky.Data.Records)-1].Stats["followersCount"])
 ```
 
+Every stats record (post stats and profile stats alike) carries `RawStats` alongside the
+normalized `Stats`, exposing each metric under its **original platform name**:
+
+```go
+stats, err := client.Posts.Stats(ctx, []string{"post-id"}, nil)
+record := stats.Data["post-id"].Platforms[0].Records[0]
+
+fmt.Println(record.Stats["impressions"])       // normalized
+fmt.Println(record.RawStats["views"])          // Instagram's own name
+fmt.Println(record.RawStats["impression_count"]) // Twitter/X's own name
+```
+
+LinkedIn post stats now normalize `likes`, `comments`, `shares`, and `clicks` alongside
+`impressions` — previously only `impressions` was normalized.
+
+#### Post syncs & backfill
+
+PostProxy mirrors posts published natively on a platform into your account. Every one of
+those pulls is recorded as a **post sync**: the one fired when the profile connects, the
+recurring poll, and any backfill you start.
+
+```go
+// Start a backfill — walks the feed backwards from the newest post in batches
+// of 25 until it reaches `from` or the platform stops returning posts.
+sync, err := client.Profiles.BackfillPosts(ctx, "profile-id", "2025-01-01", nil)
+fmt.Println(sync.ID, sync.Status) // "sync456def" "pending"
+
+// Poll it to completion — finished when Status is PostSyncStatusCompleted or
+// PostSyncStatusFailed.
+run, err := client.Profiles.PostSync(ctx, "profile-id", sync.ID, nil)
+fmt.Println(run.PostsImported, "of", run.PostsSeen, "back to", run.OldestPostedAt)
+
+// List recent runs (kept for 30 days), newest first
+trigger := postproxy.PostSyncTriggerBackfill
+status := postproxy.PostSyncStatusCompleted
+runs, err := client.Profiles.PostSyncs(ctx, "profile-id", &postproxy.PostSyncListOptions{
+	Trigger: &trigger,  // connect | scheduled | backfill
+	Status:  &status,   // pending | running | completed | failed
+})
+```
+
+| `PostSync` field | Description |
+|---|---|
+| `ID` | Sync identifier |
+| `ProfileID` | Profile this run belongs to |
+| `Kind` | Always `posts` today |
+| `Trigger` | `connect`, `scheduled`, or `backfill` |
+| `Status` | `pending`, `running`, `completed`, or `failed` |
+| `StartedAt` / `CompletedAt` | ISO 8601 timestamps, `nil` until set |
+| `PostsSeen` | Posts the platform returned across the run |
+| `PostsImported` | Posts that were **new** and got created |
+| `BackfillFrom` | The date floor requested; `nil` for `connect`/`scheduled` |
+| `OldestPostedAt` | Publish date of the oldest post the run reached |
+| `Error` | Platform error message when `Status` is failed |
+| `CreatedAt` | ISO 8601 timestamp |
+
+**How far back a backfill reaches depends on the platform's API**, not on PostProxy: where
+history is pageable we follow it, otherwise the run ends early with whatever it got and
+still reports `PostSyncStatusCompleted`.
+
+Only one backfill runs per profile at a time — starting a second returns a 409 carrying the
+running one's id:
+
+```go
+sync, err := client.Profiles.BackfillPosts(ctx, "profile-id", "2025-01-01", nil)
+if postproxy.IsConflictError(err) {
+	apiErr := err.(*postproxy.PostProxyError)
+	runningID, _ := apiErr.Response["profile_sync_id"].(string)
+	// Poll the run that's already going.
+}
+```
+
+Posts you already have are skipped, so overlapping backfills are safe. Imported posts
+behave exactly like ones the poll picks up (`source: "imported"`, `post.imported` webhook),
+but a backfill's follow-up work is queued at a lower priority so a deep run can't slow down
+publishing.
+
 ### Profile Groups
 
 ```go
@@ -594,11 +756,25 @@ if err != nil {
 		fmt.Println("Post not found")
 	} else if postproxy.IsAuthenticationError(err) {
 		fmt.Println("Invalid API key")
+	} else if postproxy.IsConflictError(err) {
+		// Duplicate submission, a backfill already running, or an in-flight
+		// Idempotency-Key. The details are in the parsed response body.
+		apiErr := err.(*postproxy.PostProxyError)
+		fmt.Println(apiErr.Response["duplicate_post_id"], apiErr.Response["profile_sync_id"])
 	} else {
 		fmt.Printf("Error: %v\n", err)
 	}
 }
 ```
+
+| Status | Helper | Raised for |
+|---|---|---|
+| 400 | `IsBadRequestError` | Missing required parameters |
+| 401 | `IsAuthenticationError` | Invalid, missing, or insufficient API key permissions |
+| 404 | `IsNotFoundError` | Resource does not exist or is not accessible |
+| 409 | `IsConflictError` | Duplicate submission, a backfill already running, or an in-flight `Idempotency-Key` |
+| 422 | `IsValidationError` | Validation failed |
+| 429 | — | Posting rate limit reached; check `PostProxyError.StatusCode` |
 
 ## Examples
 

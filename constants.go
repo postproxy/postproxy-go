@@ -1,7 +1,7 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.11.0"
+const Version = "1.12.0"
 
 // Platform represents a social media platform.
 type Platform string
@@ -162,6 +162,25 @@ type TelegramParseMode string
 const (
 	TelegramParseModeHTML       TelegramParseMode = "HTML"
 	TelegramParseModeMarkdownV2 TelegramParseMode = "MarkdownV2"
+)
+
+// PostSyncTrigger says what started a post sync run.
+type PostSyncTrigger string
+
+const (
+	PostSyncTriggerConnect   PostSyncTrigger = "connect"
+	PostSyncTriggerScheduled PostSyncTrigger = "scheduled"
+	PostSyncTriggerBackfill  PostSyncTrigger = "backfill"
+)
+
+// PostSyncStatus represents the state of a post sync run.
+type PostSyncStatus string
+
+const (
+	PostSyncStatusPending   PostSyncStatus = "pending"
+	PostSyncStatusRunning   PostSyncStatus = "running"
+	PostSyncStatusCompleted PostSyncStatus = "completed"
+	PostSyncStatusFailed    PostSyncStatus = "failed"
 )
 
 // MessageDirection represents the direction of a direct message.

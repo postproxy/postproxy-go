@@ -177,3 +177,57 @@ func TestClient_ErrorParsing(t *testing.T) {
 		})
 	}
 }
+
+func TestIdempotencyKeyHeader(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Idempotency-Key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	ctx := WithIdempotencyKey(context.Background(), "3f8b1c94-6a2d-4f0e-9d31-7c5e2a8b4f10")
+	if _, err := c.Posts.Create(ctx, "hello", []string{"prof-1"}, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "3f8b1c94-6a2d-4f0e-9d31-7c5e2a8b4f10" {
+		t.Errorf("expected the Idempotency-Key header to be sent, got %q", got)
+	}
+}
+
+func TestIdempotencyKeyHeaderOmitted(t *testing.T) {
+	var present bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, present = r.Header["Idempotency-Key"]
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	if _, err := c.Posts.Create(context.Background(), "hello", []string{"prof-1"}, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if present {
+		t.Error("expected no Idempotency-Key header when none was set")
+	}
+}
+
+func TestIsConflictError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"Duplicate post","duplicate_post_id":"post-1"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Posts.Create(context.Background(), "hello", []string{"prof-1"}, nil)
+	if !IsConflictError(err) {
+		t.Fatalf("expected a conflict error, got %v", err)
+	}
+	if apiErr, ok := err.(*PostProxyError); !ok || apiErr.Response["duplicate_post_id"] != "post-1" {
+		t.Errorf("expected duplicate_post_id in the response, got %v", err)
+	}
+}

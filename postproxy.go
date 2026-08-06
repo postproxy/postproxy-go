@@ -33,6 +33,29 @@ type Client struct {
 	Messages        *MessagesService
 }
 
+type idempotencyKeyCtxKey struct{}
+
+// WithIdempotencyKey returns a context that carries an Idempotency-Key header
+// on every write request (POST/PUT/PATCH/DELETE) made with it. If the
+// connection drops before you see the response, retry with the same key and
+// the API replays the original response instead of running the request again.
+//
+// Use a fresh key per logical operation — a UUID is ideal. Keys are scoped to
+// your account and may be up to 255 characters. The SDK never generates keys
+// or retries for you.
+//
+//	ctx := postproxy.WithIdempotencyKey(context.Background(), uuid.NewString())
+//	post, err := client.Posts.Create(ctx, "Hello", []string{"prof-1"}, nil)
+func WithIdempotencyKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, idempotencyKeyCtxKey{}, key)
+}
+
+// IdempotencyKeyFromContext returns the key set by WithIdempotencyKey, if any.
+func IdempotencyKeyFromContext(ctx context.Context) (string, bool) {
+	key, ok := ctx.Value(idempotencyKeyCtxKey{}).(string)
+	return key, ok && key != ""
+}
+
 // Option configures the Client.
 type Option func(*Client)
 
@@ -171,6 +194,9 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 	req.Header.Set("User-Agent", userAgent)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	if key, ok := IdempotencyKeyFromContext(ctx); ok {
+		req.Header.Set("Idempotency-Key", key)
 	}
 
 	resp, err := c.httpClient.Do(req)

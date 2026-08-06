@@ -366,3 +366,97 @@ func TestCommentsUnlike(t *testing.T) {
 		t.Errorf("expected accepted true")
 	}
 }
+
+func TestCommentsListDateFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("from") != "2026-03-25" {
+			t.Errorf("expected from=2026-03-25, got %q", q.Get("from"))
+		}
+		if q.Get("to") != "2026-03-26T12:00:00Z" {
+			t.Errorf("expected to=2026-03-26T12:00:00Z, got %q", q.Get("to"))
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PaginatedResponse[Comment]{Total: 0, PerPage: 20})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	from := "2026-03-25"
+	to := "2026-03-26T12:00:00Z"
+	if _, err := c.Comments.List(context.Background(), "post-1", "prof-1", &CommentListOptions{
+		From: &from,
+		To:   &to,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCommentsListAll(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/comments" {
+			t.Errorf("expected path /api/comments, got %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("profiles") != "instagram,prof456" {
+			t.Errorf("expected profiles=instagram,prof456, got %q", q.Get("profiles"))
+		}
+		if q.Get("post_ids") != "abc123xyz,def456uvw" {
+			t.Errorf("expected post_ids joined by comma, got %q", q.Get("post_ids"))
+		}
+		if q.Get("per_page") != "50" {
+			t.Errorf("expected per_page=50, got %q", q.Get("per_page"))
+		}
+
+		parent := "17858893269123456"
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PaginatedResponse[BulkComment]{
+			Data: []BulkComment{
+				{ID: "cmt_abc123", PostID: "abc123xyz", ProfileID: "prof456", Platform: PlatformInstagram, Body: "Great post!"},
+				// Flat: the reply is its own entry, linked by parent_external_id.
+				{ID: "cmt_def456", PostID: "abc123xyz", ProfileID: "prof456", Platform: PlatformInstagram, Body: "Thanks!", ParentExternalID: &parent},
+			},
+			Total:   2,
+			PerPage: 50,
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	perPage := 50
+	result, err := c.Comments.ListAll(context.Background(), &BulkCommentListOptions{
+		Profiles: []string{"instagram", "prof456"},
+		PostIDs:  []string{"abc123xyz", "def456uvw"},
+		PerPage:  &perPage,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("expected total 2, got %d", result.Total)
+	}
+	if result.Data[0].PostID != "abc123xyz" || result.Data[0].Platform != PlatformInstagram {
+		t.Errorf("expected the comment to report where it came from, got %+v", result.Data[0])
+	}
+	if result.Data[1].ParentExternalID == nil {
+		t.Error("expected the reply to carry parent_external_id")
+	}
+}
+
+func TestCommentsListAllNoFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("profiles") != "" || q.Get("post_ids") != "" {
+			t.Errorf("expected no filters, got %v", q)
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PaginatedResponse[BulkComment]{PerPage: 20})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	if _, err := c.Comments.ListAll(context.Background(), nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

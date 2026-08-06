@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // CommentsService handles communication with the comments related methods of the PostProxy API.
@@ -24,6 +25,12 @@ func (s *CommentsService) List(ctx context.Context, postID, profileID string, op
 		if opts.PerPage != nil {
 			params.Set("per_page", fmt.Sprintf("%d", *opts.PerPage))
 		}
+		if opts.From != nil {
+			params.Set("from", *opts.From)
+		}
+		if opts.To != nil {
+			params.Set("to", *opts.To)
+		}
 	}
 
 	data, err := s.client.request(ctx, http.MethodGet, "/posts/"+postID+"/comments", withParams(params))
@@ -32,6 +39,55 @@ func (s *CommentsService) List(ctx context.Context, postID, profileID string, op
 	}
 
 	var result PaginatedResponse[Comment]
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListAll returns comments spanning every post in the profile group. Flat:
+// replies come back as their own entries linked by ParentExternalID, so Total
+// counts every comment and paging is exact.
+//
+// Unknown or out-of-scope IDs in PostIDs and Profiles are ignored rather than
+// erroring. Results are ordered newest first by receipt time.
+func (s *CommentsService) ListAll(ctx context.Context, opts *BulkCommentListOptions) (*PaginatedResponse[BulkComment], error) {
+	var reqOpts []requestOption
+
+	if opts != nil {
+		params := url.Values{}
+		if len(opts.PostIDs) > 0 {
+			params.Set("post_ids", strings.Join(opts.PostIDs, ","))
+		}
+		if len(opts.Profiles) > 0 {
+			params.Set("profiles", strings.Join(opts.Profiles, ","))
+		}
+		if opts.From != nil {
+			params.Set("from", *opts.From)
+		}
+		if opts.To != nil {
+			params.Set("to", *opts.To)
+		}
+		if opts.Page != nil {
+			params.Set("page", fmt.Sprintf("%d", *opts.Page))
+		}
+		if opts.PerPage != nil {
+			params.Set("per_page", fmt.Sprintf("%d", *opts.PerPage))
+		}
+		if len(params) > 0 {
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		if opts.ProfileGroupID != nil {
+			reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/comments", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PaginatedResponse[BulkComment]
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}

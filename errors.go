@@ -28,6 +28,15 @@ func IsNotFoundError(err error) bool {
 	return ok && e.StatusCode == 404
 }
 
+// IsConflictError reports whether the error is a 409 conflict — a duplicate
+// submission (Response["duplicate_post_id"]), a backfill that is already
+// running (Response["profile_sync_id"]), or a request whose Idempotency-Key is
+// still in flight.
+func IsConflictError(err error) bool {
+	e, ok := err.(*PostProxyError)
+	return ok && e.StatusCode == 409
+}
+
 // IsValidationError reports whether the error is a 422 validation error.
 func IsValidationError(err error) bool {
 	e, ok := err.(*PostProxyError)

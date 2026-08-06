@@ -204,13 +204,25 @@ type FacebookParams struct {
 
 // InstagramParams contains Instagram-specific post parameters.
 type InstagramParams struct {
-	Format        *InstagramFormat `json:"format,omitempty"`
-	FirstComment  *string          `json:"first_comment,omitempty"`
-	Collaborators []string         `json:"collaborators,omitempty"`
-	CoverURL      *string          `json:"cover_url,omitempty"`
-	AudioName     *string          `json:"audio_name,omitempty"`
-	TrialStrategy *bool            `json:"trial_strategy,omitempty"`
-	ThumbOffset   *int             `json:"thumb_offset,omitempty"`
+	Format        *InstagramFormat   `json:"format,omitempty"`
+	FirstComment  *string            `json:"first_comment,omitempty"`
+	Collaborators []string           `json:"collaborators,omitempty"`
+	CoverURL      *string            `json:"cover_url,omitempty"`
+	AudioName     *string            `json:"audio_name,omitempty"`
+	TrialStrategy *bool              `json:"trial_strategy,omitempty"`
+	ThumbOffset   *int               `json:"thumb_offset,omitempty"`
+	UserTags      []InstagramUserTag `json:"user_tags,omitempty"`
+}
+
+// InstagramUserTag is an Instagram account to tag in a post. Images require X
+// and Y; reels and video slides are tagged by username only — Instagram
+// ignores coordinates there.
+type InstagramUserTag struct {
+	Username string   `json:"username"`
+	X        *float64 `json:"x,omitempty"`
+	Y        *float64 `json:"y,omitempty"`
+	// MediaIndex picks which media item to tag, 0-based. Defaults to 0.
+	MediaIndex *int `json:"media_index,omitempty"`
 }
 
 // TikTokParams contains TikTok-specific post parameters.
@@ -367,7 +379,10 @@ type PlatformStats struct {
 
 // StatsRecord is a single stats snapshot at a point in time.
 type StatsRecord struct {
-	Stats      map[string]any `json:"stats"`
+	Stats map[string]any `json:"stats"`
+	// RawStats carries every metric under its original platform name, e.g.
+	// "views" for Instagram or "impression_count" for Twitter/X.
+	RawStats   map[string]any `json:"raw_stats"`
 	RecordedAt string         `json:"recorded_at"`
 }
 
@@ -399,6 +414,52 @@ type Comment struct {
 	PostedAt         *string        `json:"posted_at"`
 	CreatedAt        string         `json:"created_at"`
 	Replies          []Comment      `json:"replies"`
+}
+
+// BulkComment is a comment from CommentsService.ListAll. Flat: replies are
+// their own entries linked to their parent by ParentExternalID rather than
+// nested under Replies.
+type BulkComment struct {
+	PostID           string         `json:"post_id"`
+	ProfileID        string         `json:"profile_id"`
+	Platform         Platform       `json:"platform"`
+	ID               string         `json:"id"`
+	ExternalID       *string        `json:"external_id"`
+	Body             string         `json:"body"`
+	Status           string         `json:"status"`
+	AuthorUsername   *string        `json:"author_username"`
+	AuthorAvatarURL  *string        `json:"author_avatar_url"`
+	AuthorExternalID *string        `json:"author_external_id"`
+	Metadata         map[string]any `json:"metadata"`
+	ParentExternalID *string        `json:"parent_external_id"`
+	LikeCount        int            `json:"like_count"`
+	IsHidden         bool           `json:"is_hidden"`
+	Permalink        *string        `json:"permalink"`
+	PlatformData     any            `json:"platform_data"`
+	Attachments      []Attachment   `json:"attachments"`
+	PostedAt         *string        `json:"posted_at"`
+	CreatedAt        string         `json:"created_at"`
+}
+
+// PostSync records one post pull for a profile — the sync fired when the
+// profile connects, the recurring poll, or a backfill.
+type PostSync struct {
+	ID          string          `json:"id"`
+	ProfileID   string          `json:"profile_id"`
+	Kind        string          `json:"kind"`
+	Trigger     PostSyncTrigger `json:"trigger"`
+	Status      PostSyncStatus  `json:"status"`
+	StartedAt   *string         `json:"started_at"`
+	CompletedAt *string         `json:"completed_at"`
+	PostsSeen   int             `json:"posts_seen"`
+	// PostsImported counts posts that were new and got created — lower than
+	// PostsSeen whenever the run re-read posts you already have.
+	PostsImported int     `json:"posts_imported"`
+	BackfillFrom  *string `json:"backfill_from"`
+	// OldestPostedAt is the publish date of the oldest post the run reached.
+	OldestPostedAt *string `json:"oldest_posted_at"`
+	Error          *string `json:"error"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 // Reaction represents an emoji reaction on a message.
@@ -528,9 +589,36 @@ type ProfileCommentListOptions struct {
 }
 
 // CommentListOptions contains options for listing comments.
+//
+// From and To filter on when PostProxy received the comment (created_at), not
+// the platform's posted_at. They apply to top-level comments — one in range
+// brings its full Replies slice with it.
 type CommentListOptions struct {
 	Page    *int
 	PerPage *int
+	From    *string
+	To      *string
+}
+
+// BulkCommentListOptions contains options for CommentsService.ListAll. Every
+// field is optional. Profiles takes profile IDs or network names, mixed.
+type BulkCommentListOptions struct {
+	PostIDs        []string
+	Profiles       []string
+	From           *string
+	To             *string
+	Page           *int
+	PerPage        *int
+	ProfileGroupID *string
+}
+
+// PostSyncListOptions contains options for ProfilesService.PostSyncs.
+type PostSyncListOptions struct {
+	Trigger        *PostSyncTrigger
+	Status         *PostSyncStatus
+	Page           *int
+	PerPage        *int
+	ProfileGroupID *string
 }
 
 // CommentCreateOptions contains options for creating a comment.

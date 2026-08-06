@@ -257,3 +257,151 @@ func TestProfilesDelete(t *testing.T) {
 		t.Error("expected success=true")
 	}
 }
+
+func TestProfilesBackfillPosts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/profiles/prof-1/backfill_posts" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["from"] != "2025-01-01" {
+			t.Errorf("expected from=2025-01-01, got %q", body["from"])
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(PostSync{
+			ID:        "sync456def",
+			ProfileID: "prof-1",
+			Kind:      "posts",
+			Trigger:   PostSyncTriggerBackfill,
+			Status:    PostSyncStatusPending,
+			CreatedAt: "2026-08-06T09:15:00.000Z",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	sync, err := c.Profiles.BackfillPosts(context.Background(), "prof-1", "2025-01-01", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sync.ID != "sync456def" {
+		t.Errorf("expected sync ID sync456def, got %q", sync.ID)
+	}
+	if sync.Trigger != PostSyncTriggerBackfill {
+		t.Errorf("expected trigger backfill, got %q", sync.Trigger)
+	}
+	if sync.Status != PostSyncStatusPending {
+		t.Errorf("expected status pending, got %q", sync.Status)
+	}
+}
+
+func TestProfilesBackfillPostsConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":           "A posts backfill is already running for this profile",
+			"profile_sync_id": "sync456def",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Profiles.BackfillPosts(context.Background(), "prof-1", "2025-01-01", nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !IsConflictError(err) {
+		t.Fatalf("expected a conflict error, got %v", err)
+	}
+
+	apiErr, ok := err.(*PostProxyError)
+	if !ok {
+		t.Fatalf("expected *PostProxyError, got %T", err)
+	}
+	if apiErr.Response["profile_sync_id"] != "sync456def" {
+		t.Errorf("expected the running sync id in the response, got %v", apiErr.Response)
+	}
+}
+
+func TestProfilesPostSyncs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/profiles/prof-1/post_syncs" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("trigger") != "backfill" {
+			t.Errorf("expected trigger=backfill, got %q", q.Get("trigger"))
+		}
+		if q.Get("status") != "running" {
+			t.Errorf("expected status=running, got %q", q.Get("status"))
+		}
+		if q.Get("per_page") != "25" {
+			t.Errorf("expected per_page=25, got %q", q.Get("per_page"))
+		}
+
+		w.WriteHeader(http.StatusOK)
+		oldest := "2025-11-04T18:22:00.000Z"
+		_ = json.NewEncoder(w).Encode(PaginatedResponse[PostSync]{
+			Data: []PostSync{{
+				ID:             "sync456def",
+				ProfileID:      "prof-1",
+				Trigger:        PostSyncTriggerBackfill,
+				Status:         PostSyncStatusRunning,
+				PostsSeen:      150,
+				PostsImported:  143,
+				OldestPostedAt: &oldest,
+			}},
+			Total:   1,
+			Page:    0,
+			PerPage: 25,
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	trigger := PostSyncTriggerBackfill
+	status := PostSyncStatusRunning
+	perPage := 25
+	result, err := c.Profiles.PostSyncs(context.Background(), "prof-1", &PostSyncListOptions{
+		Trigger: &trigger,
+		Status:  &status,
+		PerPage: &perPage,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected total 1, got %d", result.Total)
+	}
+	if result.Data[0].PostsImported != 143 {
+		t.Errorf("expected 143 imported, got %d", result.Data[0].PostsImported)
+	}
+	if result.Data[0].OldestPostedAt == nil {
+		t.Error("expected oldest_posted_at to be set")
+	}
+}
+
+func TestProfilesPostSync(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/profiles/prof-1/post_syncs/sync456def" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PostSync{ID: "sync456def", Status: PostSyncStatusCompleted})
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	sync, err := c.Profiles.PostSync(context.Background(), "prof-1", "sync456def", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sync.Status != PostSyncStatusCompleted {
+		t.Errorf("expected status completed, got %q", sync.Status)
+	}
+}

@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.0] - 2026-08-06
+
+### Added
+
+- **Post syncs & backfill.** `Profiles.BackfillPosts(ctx, id, from, opts)` walks a profile's feed backwards from the newest post and imports the history behind it; `Profiles.PostSyncs(ctx, id, opts)` and `Profiles.PostSync(ctx, id, postSyncID, opts)` expose every post pull — the one fired on connect, the recurring poll, and backfills — as the new `PostSync` type, with `PostSyncTrigger` and `PostSyncStatus` constants and `PostSyncListOptions`.
+- **`Comments.ListAll(ctx, opts)`** — comments across every post in the profile group in one request, via the new `BulkCommentListOptions`. Flat: replies are their own entries linked by `ParentExternalID`, typed as the new `BulkComment` (adds `PostID`, `ProfileID`, `Platform`).
+- `From` and `To` on `CommentListOptions`, filtering on when PostProxy received the comment.
+- **Idempotency.** `postproxy.WithIdempotencyKey(ctx, key)` returns a context that sends an `Idempotency-Key` header on every write made with it, so a dropped connection no longer forces a choice between a duplicate write and a lost one. `IdempotencyKeyFromContext` reads it back. Carried on the context rather than each options struct, so no method signature changed.
+- `IsConflictError(err)` for 409 — a duplicate submission (`Response["duplicate_post_id"]`), a backfill already running (`Response["profile_sync_id"]`), or an in-flight idempotency key.
+- **Instagram user tags.** `InstagramParams.UserTags` with the new `InstagramUserTag` type (`Username`, `X`, `Y`, `MediaIndex`) — tag accounts on feed posts, reels, and stories.
+- `StatsRecord.RawStats` — every metric under its original platform name, alongside the normalized `Stats`.
+- `examples/backfill-posts`, and cross-post comment listing in `examples/manage-comments`.
+
+### Changed
+
+- LinkedIn post stats now normalize `likes`, `comments`, `shares`, and `clicks` alongside `impressions` (server-side; `Stats` was already an open map).
+- `HUMAN_AGENT` is now approved on **both** Facebook and Instagram and extends the reply window to 7 days. `MessageSendOptions.Tag` is unchanged — see the README for Meta's policy limits.
+
 ## [1.11.0] - 2026-07-14
 
 ### Added
