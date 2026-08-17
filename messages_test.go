@@ -142,6 +142,157 @@ func TestMessagesSendWithTag(t *testing.T) {
 	}
 }
 
+func TestMessagesSendQuickReplies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		qrs, ok := req["quick_replies"].([]any)
+		if !ok || len(qrs) != 2 {
+			t.Fatalf("expected 2 quick_replies, got %v", req["quick_replies"])
+		}
+		first := qrs[0].(map[string]any)
+		if first["title"] != "Track order" || first["payload"] != "TRACK" {
+			t.Errorf("unexpected quick reply: %v", first)
+		}
+		// ContentType is omitempty, so an unset one must not be serialized.
+		if _, present := first["content_type"]; present {
+			t.Errorf("expected content_type to be omitted, got %v", first["content_type"])
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		out := map[string]any{}
+		for k, v := range mockOutbound {
+			out[k] = v
+		}
+		out["quick_replies"] = []map[string]any{
+			{"content_type": "text", "title": "Track order", "payload": "TRACK"},
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	text := "What can I help with?"
+	msg, err := c.Messages.Send(context.Background(), "chat_xyz789", &MessageSendOptions{
+		Body: &text,
+		QuickReplies: []QuickReply{
+			{Title: "Track order", Payload: "TRACK"},
+			{Title: "Talk to support", Payload: "HELP"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(msg.QuickReplies) != 1 || msg.QuickReplies[0].ContentType != "text" {
+		t.Errorf("expected echoed quick reply with content_type text, got %+v", msg.QuickReplies)
+	}
+}
+
+func TestMessagesSendButtonsWithCard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		btns, ok := req["buttons"].([]any)
+		if !ok || len(btns) != 2 {
+			t.Fatalf("expected 2 buttons, got %v", req["buttons"])
+		}
+		web := btns[0].(map[string]any)
+		if web["type"] != "web_url" || web["url"] != "https://shop.example.com" {
+			t.Errorf("unexpected web_url button: %v", web)
+		}
+		// Payload is omitempty and unset on a web_url button.
+		if _, present := web["payload"]; present {
+			t.Errorf("expected payload to be omitted on web_url button, got %v", web["payload"])
+		}
+		post := btns[1].(map[string]any)
+		if post["type"] != "postback" || post["payload"] != "CANCEL:123" {
+			t.Errorf("unexpected postback button: %v", post)
+		}
+
+		card, ok := req["card"].(map[string]any)
+		if !ok || card["subtitle"] != "Arriving Friday" {
+			t.Fatalf("unexpected card: %v", req["card"])
+		}
+		action, ok := card["default_action"].(map[string]any)
+		if !ok || action["url"] != "https://shop.example.com" {
+			t.Errorf("unexpected default_action: %v", card["default_action"])
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		out := map[string]any{}
+		for k, v := range mockOutbound {
+			out[k] = v
+		}
+		out["buttons"] = []map[string]any{
+			{"type": "web_url", "title": "Track", "url": "https://shop.example.com"},
+		}
+		out["card"] = map[string]any{"subtitle": "Arriving Friday"}
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	text := "Your order shipped"
+	msg, err := c.Messages.Send(context.Background(), "chat_xyz789", &MessageSendOptions{
+		Body: &text,
+		Buttons: []MessageButton{
+			{Type: "web_url", Title: "Track", URL: "https://shop.example.com"},
+			{Type: "postback", Title: "Cancel", Payload: "CANCEL:123"},
+		},
+		Card: &MessageCard{
+			Subtitle:      "Arriving Friday",
+			DefaultAction: &CardDefaultAction{Type: "web_url", URL: "https://shop.example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(msg.Buttons) != 1 || msg.Buttons[0].URL != "https://shop.example.com" {
+		t.Errorf("unexpected echoed buttons: %+v", msg.Buttons)
+	}
+	if msg.Card == nil || msg.Card.Subtitle != "Arriving Friday" {
+		t.Errorf("unexpected echoed card: %+v", msg.Card)
+	}
+}
+
+func TestMessagesTappedAction(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		out := map[string]any{}
+		for k, v := range mockInbound {
+			out[k] = v
+		}
+		out["id"] = "msg_333"
+		out["body"] = "Track order"
+		out["tapped_action"] = map[string]any{
+			"kind": "quick_reply", "payload": "TRACK", "title": "Track order",
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	msg, err := c.Messages.Get(context.Background(), "msg_333", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.TappedAction == nil {
+		t.Fatal("expected tapped_action to be set")
+	}
+	if msg.TappedAction.Kind != TappedActionQuickReply {
+		t.Errorf("expected kind quick_reply, got %s", msg.TappedAction.Kind)
+	}
+	if msg.TappedAction.Payload != "TRACK" {
+		t.Errorf("expected payload TRACK, got %s", msg.TappedAction.Payload)
+	}
+	if msg.TappedAction.Title == nil || *msg.TappedAction.Title != "Track order" {
+		t.Errorf("unexpected title: %v", msg.TappedAction.Title)
+	}
+}
+
 func TestMessagesSendMediaURL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

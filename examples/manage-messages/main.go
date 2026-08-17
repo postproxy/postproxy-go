@@ -85,6 +85,42 @@ func main() {
 	// Send an image from a local file (multipart)
 	// _, _ = client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{MediaFiles: []string{"./photo.png"}})
 
+	// Quick replies — tappable chips above the composer, gone once tapped.
+	// Facebook & Instagram only; up to 13.
+	prompt := "What can I help with?"
+	_, _ = client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+		Body: &prompt,
+		QuickReplies: []postproxy.QuickReply{
+			{Title: "Track order", Payload: "TRACK"},
+			{Title: "Talk to support", Payload: "HELP"},
+		},
+	})
+
+	// Buttons — attached to the message and stay in the thread. Up to 3, and Body
+	// is capped at 80 characters when buttons are present (Meta's limit). Card
+	// adds subtitle / image / tap-through to the same card.
+	shipped := "Your order shipped"
+	_, _ = client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+		Body: &shipped,
+		Buttons: []postproxy.MessageButton{
+			{Type: "web_url", Title: "Track", URL: "https://shop.example.com/o/123"},
+			{Type: "postback", Title: "Cancel", Payload: "CANCEL:123"},
+		},
+		Card: &postproxy.MessageCard{
+			Subtitle: "Arriving Friday",
+			ImageURL: "https://cdn.example.com/shoe.png",
+		},
+	})
+
+	// A tap comes back as an inbound message carrying TappedAction.
+	if tapped, err := client.Messages.List(ctx, chat.ID, &postproxy.MessageListOptions{Direction: &dir}); err == nil {
+		for _, msg := range tapped.Data {
+			if msg.TappedAction != nil {
+				fmt.Printf("  tapped %s: %s\n", msg.TappedAction.Kind, msg.TappedAction.Payload)
+			}
+		}
+	}
+
 	// React / unreact (Facebook & Instagram)
 	reaction := "love"
 	emoji := "❤️"

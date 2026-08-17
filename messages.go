@@ -101,6 +101,15 @@ func (s *MessagesService) buildJSON(opts *MessageSendOptions) requestOption {
 	if opts.ReplyMarkup != nil {
 		payload["reply_markup"] = opts.ReplyMarkup
 	}
+	if opts.QuickReplies != nil {
+		payload["quick_replies"] = opts.QuickReplies
+	}
+	if opts.Buttons != nil {
+		payload["buttons"] = opts.Buttons
+	}
+	if opts.Card != nil {
+		payload["card"] = opts.Card
+	}
 	return withJSON(payload)
 }
 

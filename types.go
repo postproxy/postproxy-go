@@ -488,6 +488,69 @@ type Chat struct {
 	CreatedAt              string         `json:"created_at"`
 }
 
+// QuickReply is a tappable chip rendered above the participant's composer,
+// gone once tapped. Facebook and Instagram only; up to 13 per send.
+// ContentType is optional on send (only "text" is accepted) and always present
+// on responses.
+type QuickReply struct {
+	ContentType string `json:"content_type,omitempty"`
+	// 20 characters or fewer.
+	Title string `json:"title"`
+	// 1000 characters or fewer. Comes back on the tap as TappedAction.Payload.
+	Payload string `json:"payload"`
+}
+
+// MessageButton is a button attached to the message itself, delivered as a Meta
+// generic template. Facebook and Instagram only; up to 3 per send.
+//
+// URL is required and must be https when Type is "web_url"; Payload is required
+// when Type is "postback". Type is a plain string rather than a named enum so a
+// new Meta button type needs no SDK release.
+type MessageButton struct {
+	Type string `json:"type"`
+	// 20 characters or fewer.
+	Title   string `json:"title"`
+	URL     string `json:"url,omitempty"`
+	Payload string `json:"payload,omitempty"`
+}
+
+// CardDefaultAction is the tap-through on a MessageCard.
+type CardDefaultAction struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+// MessageCard fills in the rest of the generic-template element that carries
+// Buttons, for a richer product-style card. Requires Buttons.
+type MessageCard struct {
+	// 80 characters or fewer.
+	Subtitle      string             `json:"subtitle,omitempty"`
+	ImageURL      string             `json:"image_url,omitempty"`
+	DefaultAction *CardDefaultAction `json:"default_action,omitempty"`
+}
+
+// TappedActionKind identifies which interactive element a participant tapped.
+type TappedActionKind = string
+
+const (
+	TappedActionQuickReply    TappedActionKind = "quick_reply"
+	TappedActionPostback      TappedActionKind = "postback"
+	TappedActionCallbackQuery TappedActionKind = "callback_query"
+)
+
+// TappedAction is set on inbound messages created by a tap on an interactive
+// element you sent. It is derived from PlatformData rather than stored, so it
+// also resolves for taps ingested before PostProxy exposed this field.
+// TappedActionCallbackQuery is Telegram, so this is not Meta-only even though
+// the send options are.
+type TappedAction struct {
+	Kind TappedActionKind `json:"kind"`
+	// The payload you set on the quick reply, button, or ice breaker.
+	Payload string `json:"payload"`
+	// The label the participant tapped.
+	Title *string `json:"title"`
+}
+
 // Message represents a direct message within a chat.
 type Message struct {
 	ID                  string           `json:"id"`
@@ -506,6 +569,10 @@ type Message struct {
 	ExternalEditedAt    *string          `json:"external_edited_at"`
 	ReplyToExternalID   *string          `json:"reply_to_external_id"`
 	ReplyMarkup         map[string]any   `json:"reply_markup"`
+	QuickReplies        []QuickReply     `json:"quick_replies"`
+	Buttons             []MessageButton  `json:"buttons"`
+	Card                *MessageCard     `json:"card"`
+	TappedAction        *TappedAction    `json:"tapped_action"`
 	ExternalDeletedAt   *string          `json:"external_deleted_at"`
 	Reactions           []Reaction       `json:"reactions"`
 	Attachments         []Attachment     `json:"attachments"`
@@ -540,6 +607,11 @@ type MessageListOptions struct {
 
 // MessageSendOptions contains options for sending a message. If MediaFiles is set,
 // the request uses multipart/form-data (mirrors PostsService.Create).
+//
+// QuickReplies, Buttons, and Card are Facebook and Instagram only — they return
+// 422 on Telegram and Bluesky, where ReplyMarkup is the equivalent. They are
+// sent on the JSON path only, so pass Media as hosted URLs rather than
+// MediaFiles when combining with an attachment.
 type MessageSendOptions struct {
 	Body              *string
 	Media             []string
@@ -547,7 +619,11 @@ type MessageSendOptions struct {
 	Tag               *string
 	ReplyToExternalID *string
 	ReplyMarkup       map[string]any
-	ProfileGroupID    *string
+	QuickReplies      []QuickReply
+	Buttons           []MessageButton
+	// Requires Buttons.
+	Card           *MessageCard
+	ProfileGroupID *string
 }
 
 // MessageEditOptions contains options for editing a message.

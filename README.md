@@ -556,7 +556,84 @@ reaction := "love"
 emoji := "❤️"
 client.Messages.React(ctx, sent.ID, &postproxy.MessageReactOptions{Reaction: &reaction, Emoji: &emoji})
 client.Messages.Unreact(ctx, sent.ID, nil)
+
+// Telegram: thread under a message and attach an inline keyboard
+replyTo := "4821"
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Body:              &body,
+	ReplyToExternalID: &replyTo,
+	ReplyMarkup: map[string]any{
+		"inline_keyboard": []any{[]any{map[string]any{"text": "Track order", "callback_data": "track:1"}}},
+	},
+})
 ```
+
+#### Quick replies and buttons (Facebook & Instagram)
+
+Meta's two interactive primitives. **Quick replies** are chips above the participant's
+composer that disappear once tapped; **buttons** are attached to the message and stay in
+the thread. Telegram's equivalent is `ReplyMarkup` above — passing `QuickReplies` or
+`Buttons` on a Telegram or Bluesky chat returns `422`.
+
+```go
+// Quick replies — up to 13. Title ≤ 20 chars, Payload ≤ 1000.
+prompt := "What can I help with?"
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Body: &prompt,
+	QuickReplies: []postproxy.QuickReply{
+		{Title: "Track order", Payload: "TRACK"},
+		{Title: "Talk to support", Payload: "HELP"},
+	},
+})
+
+// Buttons — up to 3, each either web_url or postback. Card is optional and
+// requires Buttons.
+shipped := "Your order shipped"
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Body: &shipped,
+	Buttons: []postproxy.MessageButton{
+		{Type: "web_url", Title: "Track", URL: "https://shop.example.com/o/123"},
+		{Type: "postback", Title: "Cancel", Payload: "CANCEL:123"},
+	},
+	Card: &postproxy.MessageCard{
+		Subtitle: "Arriving Friday",
+		ImageURL: "https://cdn.example.com/shoe.png",
+		DefaultAction: &postproxy.CardDefaultAction{
+			Type: "web_url", URL: "https://shop.example.com/o/123",
+		},
+	},
+})
+```
+
+Buttons are delivered as a Meta generic template and your `Body` becomes the template's
+element title — so **`Body` is capped at 80 characters when buttons are present**. That is
+Meta's limit, not PostProxy's, and a longer body is rejected with a `422` naming the
+length. Buttons cannot be combined with media. Instagram is stricter than Messenger: it
+delivers quick replies only on a plain-text message, so `QuickReplies` with media or with
+`Buttons` returns `422` on Instagram while both are accepted on Facebook.
+
+Validation happens server-side and names the offending index — `buttons[1].url must be an
+https:// URL` — surfacing as the SDK's usual error for a `422`.
+
+> The new options are sent on the JSON path only. To combine quick replies with an
+> attachment, pass `Media` as a hosted URL rather than uploading via `MediaFiles`.
+
+A tap comes back as an **inbound message** carrying `TappedAction`:
+
+```go
+inbound, _ := client.Messages.List(ctx, chat.ID, &postproxy.MessageListOptions{Direction: &dir})
+for _, msg := range inbound.Data {
+	if msg.TappedAction != nil {
+		// postproxy.TappedActionQuickReply / TappedActionPostback / TappedActionCallbackQuery
+		fmt.Println(msg.TappedAction.Kind, msg.TappedAction.Payload)
+	}
+}
+```
+
+Subscribe to `message.received` to react to taps as they happen — the same field is on the
+webhook payload. `TappedAction` is derived rather than stored, so it also resolves for taps
+recorded before PostProxy exposed it, including Instagram ice-breaker taps and Telegram
+callback queries (`TappedActionCallbackQuery`). A tap also opens the 24h window.
 
 ### Profile comments (Google Business reviews)
 

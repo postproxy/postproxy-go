@@ -1,7 +1,7 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.12.0"
+const Version = "1.13.0"
 
 // Platform represents a social media platform.
 type Platform string
