@@ -1,6 +1,6 @@
-# PostProxy Go SDK
+# Postproxy Go SDK
 
-The official Go SDK for the [PostProxy](https://postproxy.dev) API.
+The official Go SDK for the [Postproxy](https://postproxy.dev) API.
 
 ## Installation
 
@@ -607,7 +607,7 @@ client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
 
 Buttons are delivered as a Meta generic template and your `Body` becomes the template's
 element title — so **`Body` is capped at 80 characters when buttons are present**. That is
-Meta's limit, not PostProxy's, and a longer body is rejected with a `422` naming the
+Meta's limit, not Postproxy's, and a longer body is rejected with a `422` naming the
 length. Buttons cannot be combined with media. Instagram is stricter than Messenger: it
 delivers quick replies only on a plain-text message, so `QuickReplies` with media or with
 `Buttons` returns `422` on Instagram while both are accepted on Facebook.
@@ -632,7 +632,7 @@ for _, msg := range inbound.Data {
 
 Subscribe to `message.received` to react to taps as they happen — the same field is on the
 webhook payload. `TappedAction` is derived rather than stored, so it also resolves for taps
-recorded before PostProxy exposed it, including Instagram ice-breaker taps and Telegram
+recorded before Postproxy exposed it, including Instagram ice-breaker taps and Telegram
 callback queries (`TappedActionCallbackQuery`). A tap also opens the 24h window.
 
 ### Profile comments (Google Business reviews)
@@ -721,7 +721,7 @@ LinkedIn post stats now normalize `likes`, `comments`, `shares`, and `clicks` al
 
 #### Post syncs & backfill
 
-PostProxy mirrors posts published natively on a platform into your account. Every one of
+Postproxy mirrors posts published natively on a platform into your account. Every one of
 those pulls is recorded as a **post sync**: the one fired when the profile connects, the
 recurring poll, and any backfill you start.
 
@@ -760,7 +760,7 @@ runs, err := client.Profiles.PostSyncs(ctx, "profile-id", &postproxy.PostSyncLis
 | `Error` | Platform error message when `Status` is failed |
 | `CreatedAt` | ISO 8601 timestamp |
 
-**How far back a backfill reaches depends on the platform's API**, not on PostProxy: where
+**How far back a backfill reaches depends on the platform's API**, not on Postproxy: where
 history is pageable we follow it, otherwise the run ends early with whatever it got and
 still reports `PostSyncStatusCompleted`.
 
