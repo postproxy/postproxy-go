@@ -167,6 +167,64 @@ post, err = client.Posts.Create(ctx, "Which framework?", []string{"twitter"}, &p
 	},
 })
 
+// LinkedIn poll (2-4 options, max 30 chars each; 1, 3, 7 or 14 days)
+liPoll := postproxy.LinkedInFormatPoll
+question := "Tabs or spaces?"
+days := 3
+post, err = client.Posts.Create(ctx, "Settle this", []string{"linkedin"}, &postproxy.PostCreateOptions{
+	Platforms: &postproxy.PlatformParams{
+		LinkedIn: &postproxy.LinkedInParams{
+			Format:           &liPoll,
+			PollQuestion:     &question,
+			PollOptions:      []string{"Tabs", "Spaces"},
+			PollDurationDays: &days,
+		},
+	},
+})
+
+// Alt text: one entry per media item, in order. A single entry is sent as a
+// plain string and applies to the first media item. Facebook, Instagram,
+// LinkedIn, Bluesky, Threads, Pinterest and Twitter.
+post, err = client.Posts.Create(ctx, "Foxes", []string{"bluesky"}, &postproxy.PostCreateOptions{
+	Media: []string{"https://example.com/fox1.jpg", "https://example.com/fox2.jpg"},
+	Platforms: &postproxy.PlatformParams{
+		Bluesky: &postproxy.BlueskyParams{AltText: postproxy.AltText{"A red fox in the snow", "The same fox, mid-leap"}},
+	},
+})
+
+// More platform params
+link := "https://example.com/launch"
+topic := "Coffee"
+trial := postproxy.InstagramTrialStrategyManual // or InstagramTrialStrategySSPerformance
+audioID := "1234567890"                         // from Profiles.InstagramAvailableAudio
+madeWithAI, draftOnTikTok := true, true
+platforms := &postproxy.PlatformParams{
+	Facebook:  &postproxy.FacebookParams{Link: &link, Countries: []string{"US", "CA"}, MadeWithAI: &madeWithAI},
+	Instagram: &postproxy.InstagramParams{TrialStrategy: &trial, AudioID: &audioID},
+	Threads:   &postproxy.ThreadsParams{TopicTag: &topic},
+	TikTok:    &postproxy.TikTokParams{UploadAsDraft: &draftOnTikTok},
+	// LinkedIn: ReshareURN, Countries. Instagram: AudioVolume, VideoVolume, StripAudio, MadeWithAI.
+	// TikTok: CoverURL, ThumbOffset.
+}
+
+// Custom cover from disk. CoverFile (Instagram, TikTok, YouTube, Pinterest) is
+// a local path the SDK uploads with the post — the request switches to
+// multipart even without MediaFiles. A base64 "data:image/jpeg;base64,..." URL
+// is sent as-is instead. Works on Create and Update.
+videoFormat := postproxy.TikTokFormatVideo
+cover := "./cover.jpg"
+post, err = client.Posts.Create(ctx, "Behind the scenes", []string{"tiktok"}, &postproxy.PostCreateOptions{
+	Media: []string{"https://example.com/bts.mp4"},
+	Platforms: &postproxy.PlatformParams{
+		TikTok: &postproxy.TikTokParams{Format: &videoFormat, CoverFile: &cover},
+	},
+})
+
+// Publish even if an identical post was just submitted (skips the 409)
+post, err = client.Posts.Create(ctx, "Same again", []string{"profile-id"}, &postproxy.PostCreateOptions{
+	SkipDuplicateCheck: true, // sends X-Skip-Duplicate-Check: true
+})
+
 // Create a thread post
 post, err := client.Posts.Create(ctx, "Thread starts here", []string{"profile-id"}, &postproxy.PostCreateOptions{
 	Thread: []postproxy.ThreadChildInput{
@@ -175,13 +233,30 @@ post, err := client.Posts.Create(ctx, "Thread starts here", []string{"profile-id
 	},
 })
 for _, child := range post.Thread {
-	fmt.Printf("%s: %s\n", child.ID, child.Body)
+	// Each thread item is delivered separately; Platforms shows whether it went out.
+	fmt.Printf("%s: %s (%d platforms)\n", child.ID, child.Body, len(child.Platforms))
 }
 
-// Update a post (only drafts or scheduled posts)
+// Each PlatformResult carries ProfileID, ProfileName, Permalink and any
+// Attachments PostProxy generated for that platform (e.g. a TikTok cover).
+for _, p := range post.Platforms {
+	fmt.Println(p.Platform, p.ProfileName, p.Status, p.Permalink)
+}
+
+// Update a draft or scheduled post
 newBody := "Updated content!"
 post, err := client.Posts.Update(ctx, "post-id", &postproxy.PostUpdateOptions{
 	Body: &newBody,
+})
+
+// Edit a published post. Only Body, Platforms.YouTube.Title,
+// Platforms.Pinterest.Title and Platforms.Pinterest.DestinationLink can change;
+// the edit is pushed to the platforms in the background and reported through
+// the platform_post.edited / platform_post.edit_failed webhooks.
+ytTitle := "Launch day — full walkthrough"
+post, err = client.Posts.Update(ctx, "published-post-id", &postproxy.PostUpdateOptions{
+	Body:      &newBody,
+	Platforms: &postproxy.PlatformParams{YouTube: &postproxy.YouTubeParams{Title: &ytTitle}},
 })
 
 // Update platform params only
@@ -352,7 +427,7 @@ valid := postproxy.VerifyWebhookSignature(
 
 Subscribe to any of these events (or pass `[]string{"*"}` for all):
 
-`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `media.failed`, `comment.created`, `profile_comment.created`, `message.received`, `message.sent`, `message.delivered`, `message.read`, `message.edited`, `message.deleted`, `message.failed_waiting_for_retry`, `message.failed`, `reaction.received`.
+`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.edited`, `platform_post.edit_failed`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `profile.placements_synced`, `placement.orphaned`, `placement.restored`, `media.failed`, `comment.created`, `comment.failed`, `comment.failed_waiting_for_retry`, `comment.delivery_unconfirmed`, `comment.edited`, `comment.edit_failed`, `profile_comment.created`, `profile_comment.failed`, `profile_comment.failed_waiting_for_retry`, `profile_comment.deleted`, `message.received`, `message.sent`, `message.delivered`, `message.read`, `message.edited`, `message.deleted`, `message.failed_waiting_for_retry`, `message.failed`, `reaction.received`, `referral.received`, `message_template.status_updated`, `message_template.category_updated`, `placement.name_status_updated`, `placement.quality_updated`, `whatsapp.automatic_event`.
 
 `ParseWebhookEvent` validates the envelope; the `As*` helpers decode `Data` into a typed payload:
 
@@ -388,10 +463,42 @@ case postproxy.EventReactionReceived:
 case postproxy.EventProfileCommentCreated:
 	data, _ := event.AsProfileCommentCreated()
 	fmt.Println(data.ID, ":", data.Body)
+case postproxy.EventPlatformPostEditFailed:
+	data, _ := event.AsPlatformPost()
+	fmt.Println("Edit failed on", data.Platform, data.Error)
+case postproxy.EventCommentEditFailed:
+	data, _ := event.AsCommentCreated()
+	fmt.Println(data.ID, data.Error)
+case postproxy.EventProfilePlacementsSynced:
+	data, _ := event.AsPlacementsSynced()
+	fmt.Println(data.ID, len(data.Placements))
+case postproxy.EventPlacementQualityUpdated:
+	data, _ := event.AsPlacement()
+	fmt.Println(data.Name, data.Event, data.CurrentLimit)
+case postproxy.EventMessageTemplateStatusUpdated:
+	data, _ := event.AsMessageTemplate()
+	fmt.Println(data.Name, data.Status)
+case postproxy.EventReferralReceived:
+	data, _ := event.AsReferral()
+	fmt.Println(data.Chat.ID, data.CtwaClid)
+case postproxy.EventWhatsAppAutomaticEvent:
+	data, _ := event.AsWhatsAppAutomaticEvent()
+	fmt.Println(data.EventName, data.CustomData)
 }
 ```
 
 The typed payloads `MessageEventData` (the 8 `message.*` events), `ReactionEventData` (`reaction.received`), and `ProfileCommentCreatedData` (`profile_comment.created`) each embed the relevant resource. `MessageEventData` and `ReactionEventData` carry a full `Message` in their `Message` field.
+
+| Events | Decoder | Payload |
+|---|---|---|
+| `platform_post.*` (incl. `edited`, `edit_failed`) | `AsPlatformPost` | `PlatformPostData` |
+| `comment.*` | `AsCommentCreated` | `CommentCreatedData` (`Error`, `ErrorDetails` on failures) |
+| `profile_comment.*` | `AsProfileCommentCreated` | `ProfileCommentCreatedData` |
+| `profile.placements_synced` | `AsPlacementsSynced` | `PlacementsSyncedData` |
+| `placement.*` | `AsPlacement` | `PlacementEventData` |
+| `referral.received` | `AsReferral` | `ReferralEventData` |
+| `message_template.*` | `AsMessageTemplate` | `MessageTemplateEventData` |
+| `whatsapp.automatic_event` | `AsWhatsAppAutomaticEvent` | `WhatsAppAutomaticEventData` |
 
 ### Comments
 
@@ -449,6 +556,15 @@ client.Comments.Unhide(ctx, "post-id", "comment-id", "profile-id")
 // Like / unlike a comment
 client.Comments.Like(ctx, "post-id", "comment-id", "profile-id")
 client.Comments.Unlike(ctx, "post-id", "comment-id", "profile-id")
+
+// Edit a comment you published (Facebook, YouTube). Runs in the background —
+// the outcome arrives as comment.edited / comment.edit_failed. The edited
+// comment carries ExternalEditedAt.
+client.Comments.Edit(ctx, "post-id", "comment-id", "profile-id", "Fixed typo")
+
+// Pin / unpin a comment (TikTok)
+client.Comments.Pin(ctx, "post-id", "comment-id", "profile-id")
+client.Comments.Unpin(ctx, "post-id", "comment-id", "profile-id")
 ```
 
 Comments may carry media `Attachments` (`[]Attachment`) and author signals in `Metadata` (`map[string]any`):
@@ -467,6 +583,16 @@ Reply privately to a comment via direct message (Instagram/Facebook). This retur
 ```go
 msg, err := client.Comments.PrivateReply(ctx, "post-id", "comment-id", "profile-id", "Thanks — DM-ing you the details.")
 fmt.Println(msg.ID, msg.ChatID, msg.Status)
+
+// One private reply per comment, within 7 days of it. QuickReplies, Buttons,
+// Card and Elements work as in Messages.Send; text may be empty with Elements.
+msg, err = client.Comments.PrivateReply(ctx, "post-id", "comment-id", "profile-id", "", &postproxy.PrivateReplyOptions{
+	Elements: []postproxy.MessageElement{{
+		Title:    "Red sneaker",
+		ImageURL: "https://cdn.example.com/red.png",
+		Buttons:  []postproxy.MessageButton{{Type: "web_url", Title: "Buy", URL: "https://shop.example.com/red"}},
+	}},
+})
 ```
 
 #### Comments across posts
@@ -484,6 +610,7 @@ perPage := 50
 all, err := client.Comments.ListAll(ctx, &postproxy.BulkCommentListOptions{
 	Profiles: []string{"instagram", "prof-abc"},  // profile IDs or network names, mixed
 	PostIDs:  []string{"post-1", "post-2"},       // omit for every post in scope
+	// PlacementID: &pageID,                      // narrow to one page / organization
 	From:     &from,
 	PerPage:  &perPage,                           // max 100
 })
@@ -504,7 +631,7 @@ Results are ordered newest first by receipt time.
 
 ### Direct Messages
 
-Manage direct-message conversations (chats) and the messages within them across Facebook, Instagram, Telegram, and Bluesky.
+Manage direct-message conversations (chats) and the messages within them across Facebook, Instagram, Telegram, Bluesky, and WhatsApp.
 
 ```go
 // List chats for a profile (paginated)
@@ -526,6 +653,13 @@ chat, err = client.Chats.Get(ctx, chat.ID, nil)
 // Archive / unarchive a chat (Bluesky only)
 client.Chats.Archive(ctx, chat.ID, nil)
 client.Chats.Unarchive(ctx, chat.ID, nil)
+
+// Mark the latest inbound message read (shows the read receipt)
+client.Chats.MarkRead(ctx, chat.ID, nil)
+
+// Typing indicator (Facebook, Instagram, WhatsApp)
+client.Chats.StartTyping(ctx, chat.ID, nil)
+client.Chats.StopTyping(ctx, chat.ID, nil)
 
 // List messages in a chat
 dir := postproxy.MessageDirectionInbound
@@ -635,6 +769,77 @@ webhook payload. `TappedAction` is derived rather than stored, so it also resolv
 recorded before Postproxy exposed it, including Instagram ice-breaker taps and Telegram
 callback queries (`TappedActionCallbackQuery`). A tap also opens the 24h window.
 
+#### Carousels (Facebook & Instagram)
+
+`Elements` sends a horizontally scrolling carousel of up to 10 cards. It can't be combined
+with `Body`, `Buttons` or `Card`. Sent messages echo it back in `Message.Elements`;
+`Message.StoryReply` is set on inbound replies to your stories.
+
+```go
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Elements: []postproxy.MessageElement{
+		{
+			Title:    "Red sneaker",
+			Subtitle: "$89 — sizes 38-46",
+			ImageURL: "https://cdn.example.com/red.png",
+			Buttons:  []postproxy.MessageButton{{Type: "web_url", Title: "Buy", URL: "https://shop.example.com/red"}},
+		},
+		{
+			Title:    "Blue sneaker",
+			ImageURL: "https://cdn.example.com/blue.png",
+			Buttons:  []postproxy.MessageButton{{Type: "postback", Title: "Notify me", Payload: "NOTIFY:blue"}},
+		},
+	},
+})
+```
+
+#### WhatsApp
+
+A WhatsApp chat runs through one of the profile's phone numbers, so `Chats.Create` needs
+its `PlacementID`. Send exactly one of `Body`, `Media`, `Template`, `Interactive`,
+`Location` or `Contacts`. Outside the 24-hour customer service window
+(`Chat.WithinMessagingWindow`) only a `Template` gets through.
+
+```go
+numbers, _ := client.Profiles.Placements(ctx, "whatsapp-profile-id", nil)
+chat, err := client.Chats.Create(ctx, "whatsapp-profile-id", "15551234567", &postproxy.ChatCreateOptions{
+	PlacementID: &numbers.Data[0].ID,
+})
+
+// Template by name (+ language) or ID. Variables are positional: header, body,
+// then dynamic URL buttons.
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Template: &postproxy.MessageTemplateInput{
+		Name:      "order_shipped",
+		Language:  "en_US",
+		Variables: []string{"Jane", "#1234"},
+		ButtonParams: []postproxy.TemplateButtonParam{
+			{Index: 0, SubType: "url", Extra: map[string]any{"text": "1234"}},
+		},
+	},
+})
+
+// Location, contacts and interactive payloads
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Location: &postproxy.MessageLocation{Latitude: 52.52, Longitude: 13.405, Name: "Pickup point"},
+})
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Contacts: []map[string]any{{"name": map[string]any{"formatted_name": "Jane"}}},
+})
+
+// Send options: Category ("utility"), LinkPreview, VoiceNote (audio as a voice
+// note) and Filename (shown for a document)
+voiceNote := true
+client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
+	Media:     []string{"https://files.example.com/hello.ogg"},
+	VoiceNote: &voiceNote,
+})
+```
+
+`Chat` gains `ExternalPlacementID` and `Group` (a WhatsApp group chat); `Message` gains
+`Template`, `Interactive`, `Location`, `Contacts` and `ErrorDetails`. Download an inbound
+attachment's bytes with `WhatsApp.Media` (see [WhatsApp](#whatsapp-numbers)).
+
 ### Profile comments (Google Business reviews)
 
 Profile-level comments expose Google Business reviews and replies. Reviews are user-generated — the SDK lets you list/get them and reply to or delete your own replies. Reviews sync twice daily.
@@ -702,7 +907,49 @@ for _, r := range stats.Data.Records {
 // Bluesky — no placements
 bsky, err := client.Profiles.GetProfileStats(ctx, "prof_bsky_001", nil)
 fmt.Println(bsky.Data.Records[len(bsky.Data.Records)-1].Stats["followersCount"])
+
+// Per-day series. Attribution "publish" counts post metrics toward the day
+// the post was published instead of the day they were received.
+attribution := postproxy.DailyStatsAttributionPublish
+daily, err := client.Profiles.DailyStats(ctx, "profile-id", &postproxy.DailyStatsOptions{
+	From:        &from,
+	Attribution: &attribution,
+})
+for _, r := range daily.Data.Records {
+	fmt.Println(r.Date, r.Metrics["impressions"])
+}
+
+// Daily follower gains, losses and totals
+history, err := client.Profiles.FollowerHistory(ctx, "profile-id", &postproxy.FollowerHistoryOptions{From: &from})
+
+// Move the profile (with its placements) to another profile group
+moved, err := client.Profiles.AssignToGroup(ctx, "profile-id", "pg-other", nil)
+
+// Instagram: whether a DM participant is verified and follows you
+status, err := client.Profiles.ParticipantStatus(ctx, "profile-id", "igsid_8675309", nil)
+
+// LinkedIn: company page URL -> URN to @-mention in a post
+mention, err := client.Profiles.ResolveMention(ctx, "profile-id", "https://www.linkedin.com/company/acme", nil)
+fmt.Println(mention.URN)
+
+// Instagram: music and sounds a reel can attach via InstagramParams.AudioID
+// (profiles connected via Facebook login only)
+audioType := postproxy.InstagramAudioTypeMusic
+query := "summer"
+audio, err := client.Profiles.InstagramAvailableAudio(ctx, "profile-id", &postproxy.InstagramAvailableAudioOptions{
+	AudioType:   &audioType,
+	SearchQuery: &query,
+})
+
+// Facebook: read and update a Page's about / contact fields
+fields := "about,website"
+page, err := client.Profiles.FacebookPage(ctx, "profile-id", "page-id", &postproxy.FacebookPageOptions{Fields: &fields})
+_, err = client.Profiles.UpdateFacebookPage(ctx, "profile-id", "page-id", map[string]any{"about": "Fresh coffee"}, nil)
 ```
+
+`Profile` carries `Username`, `PlatformID`, `PlatformURL`, `AvatarURL`,
+`PlacementsSyncStatus`, and `InactiveReason` (`ProfileInactiveReasonNetworkTaken` when the
+same account was connected elsewhere). `Placement` carries `AvatarURL`.
 
 Every stats record (post stats and profile stats alike) carries `RawStats` alongside the
 normalized `Stats`, exposing each metric under its **original platform name**:
@@ -749,6 +996,7 @@ runs, err := client.Profiles.PostSyncs(ctx, "profile-id", &postproxy.PostSyncLis
 |---|---|
 | `ID` | Sync identifier |
 | `ProfileID` | Profile this run belongs to |
+| `PlacementID` | Placement the run pulled from, when there is one |
 | `Kind` | Always `posts` today |
 | `Trigger` | `connect`, `scheduled`, or `backfill` |
 | `Status` | `pending`, `running`, `completed`, or `failed` |
@@ -781,6 +1029,15 @@ behave exactly like ones the poll picks up (`source: "imported"`, `post.imported
 but a backfill's follow-up work is queued at a lower priority so a deep run can't slow down
 publishing.
 
+DM history works the same way: `BackfillChats` imports chats back to `from` and returns a
+`ChatSync` (with `ChatsSeen` and `MessagesImported`), one run per profile at a time.
+
+```go
+chatSync, err := client.Profiles.BackfillChats(ctx, "profile-id", "2026-01-01T00:00:00Z", nil)
+run, err := client.Profiles.ChatSync(ctx, "profile-id", chatSync.ID, nil)
+runs, err := client.Profiles.ChatSyncs(ctx, "profile-id", &postproxy.ChatSyncListOptions{Status: &status})
+```
+
 ### Profile Groups
 
 ```go
@@ -801,6 +1058,15 @@ conn, err := client.ProfileGroups.InitializeConnection(
 	ctx, "group-id", postproxy.PlatformInstagram, "https://myapp.com/callback",
 )
 fmt.Println("Connect here:", conn.URL)
+
+// Pick the onboarding flow: Instagram via Facebook login (needed for reel
+// music), or WhatsApp via the Cloud API / the WhatsApp Business app.
+// RefreshConnection re-authorizes an existing profile.
+onboarding := postproxy.ConnectionOnboardingBusinessApp // ...Instagram, ...Facebook, ...API
+conn, err = client.ProfileGroups.InitializeConnection(
+	ctx, "group-id", postproxy.PlatformWhatsApp, "https://myapp.com/callback",
+	&postproxy.ConnectionOptions{Onboarding: &onboarding},
+)
 
 // BlueSky — app password (synchronous, no OAuth)
 bsky, err := client.ProfileGroups.ConnectBluesky(ctx, "group-id", postproxy.BlueskyConnectOptions{
@@ -824,6 +1090,160 @@ for {
 }
 ```
 
+### Placements & API keys
+
+Both require an account-wide API key.
+
+```go
+// Every placement (Facebook Page, LinkedIn organization, WhatsApp number, ...)
+// across the account. One placement can be reachable through several
+// connected profiles; ActiveProfile is the one PostProxy posts and reads through.
+placements, err := client.Placements.List(ctx, nil)
+for _, p := range placements.Data {
+	fmt.Println(p.Name, p.Platform, p.ActiveProfile.Name, len(p.LinkedProfiles))
+}
+_, err = client.Placements.SetActiveProfile(ctx, "placement-id", "profile-id")
+
+// Profile-group-scoped API keys
+keys, err := client.APIKeys.List(ctx)
+key, err := client.APIKeys.Create(ctx, "CI", "group-id")
+fmt.Println(*key.Token) // shown only once — store it
+_, err = client.APIKeys.Delete(ctx, key.ID)
+```
+
+### Google Business
+
+Manage a Google Business Profile location's own data — hours, attributes, services, menus,
+action links and photos — separate from posting to it. `locationID` is the placement id
+from `Profiles.Placements`. Google's payloads are camelCased and passed through untouched
+as `map[string]any`, so you can PATCH back exactly what you GET. Updates take a `fields`
+list naming which top-level fields to change (Google's update mask).
+
+```go
+gbp := client.GoogleBusiness
+
+readMask := "title,phoneNumbers,websiteUri"
+location, err := gbp.Location(ctx, "profile-id", "location-id", &postproxy.GoogleBusinessLocationOptions{ReadMask: &readMask})
+_, err = gbp.UpdateLocation(ctx, "profile-id", "location-id", []string{"websiteUri"}, map[string]any{
+	"websiteUri": "https://example.com",
+}, nil)
+categories, err := gbp.AvailableLocationCategories(ctx, "profile-id", "location-id", "US", nil)
+
+_, err = gbp.UpdateHours(ctx, "profile-id", "location-id", postproxy.GoogleBusinessHours{
+	Fields: []string{"regularHours"},
+	RegularHours: map[string]any{"periods": []any{map[string]any{
+		"openDay": "MONDAY", "openTime": map[string]any{"hours": 9},
+		"closeDay": "MONDAY", "closeTime": map[string]any{"hours": 17},
+	}}},
+}, nil)
+
+// Attributes, services and food menus
+attrs, err := gbp.Attributes(ctx, "profile-id", "location-id", nil)
+available, err := gbp.AvailableAttributes(ctx, "profile-id", "location-id", nil)
+_, err = gbp.UpdateAttributes(ctx, "profile-id", "location-id", []map[string]any{
+	{"name": "attributes/has_wifi", "values": []any{true}},
+}, &postproxy.GoogleBusinessAttributesOptions{AttributeMask: []string{"attributes/has_wifi"}})
+services, err := gbp.ServiceList(ctx, "profile-id", "location-id", nil)
+_, err = gbp.UpdateServiceList(ctx, "profile-id", "location-id", serviceItems, nil)
+menus, err := gbp.FoodMenus(ctx, "profile-id", "location-id", nil)
+_, err = gbp.UpdateFoodMenus(ctx, "profile-id", "location-id", menuList, nil)
+
+// Place action links (booking, ordering, ...)
+types, err := gbp.AvailablePlaceActionTypes(ctx, "profile-id", "location-id", nil)
+links, err := gbp.PlaceActionLinks(ctx, "profile-id", "location-id", nil)
+_, err = gbp.CreatePlaceActionLink(ctx, "profile-id", "location-id", postproxy.GoogleBusinessPlaceActionLink{
+	URI: "https://book.example.com", PlaceActionType: "APPOINTMENT",
+}, nil)
+_, err = gbp.UpdatePlaceActionLink(ctx, "profile-id", "location-id", "locations/1/placeActionLinks/2",
+	[]string{"uri"}, postproxy.GoogleBusinessPlaceActionLink{URI: "https://book2.example.com"}, nil)
+_, err = gbp.DeletePlaceActionLink(ctx, "profile-id", "location-id", "locations/1/placeActionLinks/2", nil)
+
+// Photos
+category := "EXTERIOR"
+_, err = gbp.CreateMedia(ctx, "profile-id", "location-id", "https://example.com/storefront.jpg",
+	&postproxy.GoogleBusinessMediaOptions{Category: &category})
+media, err := gbp.Media(ctx, "profile-id", "location-id", nil)
+_, err = gbp.DeleteMedia(ctx, "profile-id", "location-id", "accounts/1/locations/1/media/9", nil)
+```
+
+### WhatsApp templates
+
+Templates live on the WhatsApp Business account (the profile) and are addressed by their
+PostProxy id, Meta's id, or their name — pass `Language` with a name that exists in
+several languages.
+
+```go
+template, err := client.WhatsAppTemplates.Create(ctx, "profile-id", postproxy.WhatsAppTemplateInput{
+	Name:     "order_shipped",
+	Category: "UTILITY", // MARKETING, UTILITY or AUTHENTICATION
+	Language: "en_US",
+	Components: []map[string]any{
+		{"type": "BODY", "text": "Hi {{1}}, your order {{2}} has shipped."},
+	},
+}, nil)
+fmt.Println(template.Status) // "PENDING" — follow via Get or message_template.status_updated
+
+status, refresh := "APPROVED", true
+approved, err := client.WhatsAppTemplates.List(ctx, "profile-id", &postproxy.WhatsAppTemplateListOptions{
+	Status:  &status,
+	Refresh: &refresh, // re-read from Meta first
+})
+
+lang := "en_US"
+one, err := client.WhatsAppTemplates.Get(ctx, "profile-id", "order_shipped", &postproxy.WhatsAppTemplateOptions{Language: &lang})
+_, err = client.WhatsAppTemplates.Update(ctx, "profile-id", one.ID, postproxy.WhatsAppTemplateUpdate{Components: components}, nil)
+// Deleting by name without Language removes every language of the template.
+_, err = client.WhatsAppTemplates.Delete(ctx, "profile-id", "order_shipped", nil)
+
+// Meta's ready-made template library
+library, err := client.WhatsAppTemplates.Library(ctx, "profile-id", nil)
+```
+
+### WhatsApp numbers
+
+Number administration. `phoneNumberID` is the placement id from `Profiles.Placements`;
+dataset and conversion calls are account-level and don't take one. Meta's responses come
+back as `map[string]any`.
+
+```go
+wa := client.WhatsApp
+
+// Registration
+info, err := wa.NumberInfo(ctx, "profile-id", "phone-number-id", nil)
+_, err = wa.RequestVerificationCode(ctx, "profile-id", "phone-number-id", nil)
+_, err = wa.VerifyPhoneNumber(ctx, "profile-id", "phone-number-id", "123456", nil)
+_, err = wa.RegisterPhoneNumber(ctx, "profile-id", "phone-number-id", "000000", nil) // two-step PIN
+
+// Business profile, display name, username
+about := "Fresh coffee, fast replies"
+_, err = wa.UpdateBusinessProfile(ctx, "profile-id", "phone-number-id", postproxy.WhatsAppBusinessProfile{About: &about}, nil)
+_, err = wa.UpdateBusinessProfilePhoto(ctx, "profile-id", "phone-number-id", postproxy.WhatsAppProfilePhoto{URL: "https://example.com/logo.png"}, nil)
+_, err = wa.RequestDisplayNameChange(ctx, "profile-id", "phone-number-id", "Acme Coffee", nil) // placement.name_status_updated
+_, err = wa.SetUsername(ctx, "profile-id", "phone-number-id", "acmecoffee", nil)
+suggestions, err := wa.UsernameSuggestions(ctx, "profile-id", "phone-number-id", nil)
+
+// Blocked users
+_, err = wa.BlockUsers(ctx, "profile-id", "phone-number-id", []string{"15557654321"}, nil)
+blocked, err := wa.BlockedUsers(ctx, "profile-id", "phone-number-id", nil)
+
+// Groups
+group, err := wa.CreateGroup(ctx, "profile-id", "phone-number-id", "VIP customers", nil)
+groupID := fmt.Sprint(group["id"])
+invite, err := wa.CreateGroupInviteLink(ctx, "profile-id", "phone-number-id", groupID, nil)
+requests, err := wa.GroupJoinRequests(ctx, "profile-id", "phone-number-id", groupID, nil)
+_, err = wa.ApproveGroupJoinRequests(ctx, "profile-id", "phone-number-id", groupID, []string{"15551234567"}, nil)
+
+// Conversions for click-to-WhatsApp ads
+value := 24.5
+_, err = wa.SendConversionEvent(ctx, "profile-id", postproxy.WhatsAppConversionEvent{
+	EventName: "Purchase", EventID: "order-1234", Phone: "15551234567", Currency: "USD", Value: &value,
+}, nil)
+
+// Download an inbound media file (e.g. an attachment's ExternalID) as raw bytes
+file, err := wa.Media(ctx, "profile-id", "phone-number-id", "media-id", nil)
+fmt.Println(file.ContentType, len(file.Data))
+```
+
 ## Error Handling
 
 ```go
@@ -833,6 +1253,9 @@ if err != nil {
 		fmt.Println("Post not found")
 	} else if postproxy.IsAuthenticationError(err) {
 		fmt.Println("Invalid API key")
+	} else if postproxy.IsRateLimitError(err) {
+		apiErr := err.(*postproxy.PostProxyError)
+		fmt.Printf("Rate limited — retry in %ds\n", apiErr.RetryAfter) // 0 when not given
 	} else if postproxy.IsConflictError(err) {
 		// Duplicate submission, a backfill already running, or an in-flight
 		// Idempotency-Key. The details are in the parsed response body.
@@ -848,10 +1271,11 @@ if err != nil {
 |---|---|---|
 | 400 | `IsBadRequestError` | Missing required parameters |
 | 401 | `IsAuthenticationError` | Invalid, missing, or insufficient API key permissions |
+| 403 | `IsForbiddenError` | Account canceled or past due, or the platform refused the action for lack of permission |
 | 404 | `IsNotFoundError` | Resource does not exist or is not accessible |
 | 409 | `IsConflictError` | Duplicate submission, a backfill already running, or an in-flight `Idempotency-Key` |
 | 422 | `IsValidationError` | Validation failed |
-| 429 | — | Posting rate limit reached; check `PostProxyError.StatusCode` |
+| 429 | `IsRateLimitError` | Rate limited; `PostProxyError.RetryAfter` holds the `Retry-After` seconds |
 
 ## Examples
 

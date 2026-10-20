@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"runtime"
+	"strconv"
+	"strings"
 )
 
 var userAgent = fmt.Sprintf("postproxy-go/%s (go/%s; %s/%s)", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
@@ -22,15 +25,20 @@ type Client struct {
 	httpClient     *http.Client
 	profileGroupID string
 
-	Posts           *PostsService
-	Profiles        *ProfilesService
-	ProfileGroups   *ProfileGroupsService
-	Webhooks        *WebhooksService
-	Queues          *QueuesService
-	Comments        *CommentsService
-	ProfileComments *ProfileCommentsService
-	Chats           *ChatsService
-	Messages        *MessagesService
+	Posts             *PostsService
+	Profiles          *ProfilesService
+	ProfileGroups     *ProfileGroupsService
+	Webhooks          *WebhooksService
+	Queues            *QueuesService
+	Comments          *CommentsService
+	ProfileComments   *ProfileCommentsService
+	Chats             *ChatsService
+	Messages          *MessagesService
+	Placements        *PlacementsService
+	APIKeys           *APIKeysService
+	GoogleBusiness    *GoogleBusinessService
+	WhatsAppTemplates *WhatsAppTemplatesService
+	WhatsApp          *WhatsAppService
 }
 
 type idempotencyKeyCtxKey struct{}
@@ -99,6 +107,11 @@ func NewClient(apiKey string, opts ...Option) *Client {
 	c.ProfileComments = &ProfileCommentsService{client: c}
 	c.Chats = &ChatsService{client: c}
 	c.Messages = &MessagesService{client: c}
+	c.Placements = &PlacementsService{client: c}
+	c.APIKeys = &APIKeysService{client: c}
+	c.GoogleBusiness = &GoogleBusinessService{client: c}
+	c.WhatsAppTemplates = &WhatsAppTemplatesService{client: c}
+	c.WhatsApp = &WhatsAppService{client: c}
 	return c
 }
 
@@ -108,6 +121,7 @@ type requestOptions struct {
 	formBody       io.Reader
 	contentType    string
 	profileGroupID *string
+	headers        map[string]string
 }
 
 type requestOption func(*requestOptions)
@@ -137,7 +151,23 @@ func withProfileGroupID(id *string) requestOption {
 	}
 }
 
+func withHeader(key, value string) requestOption {
+	return func(o *requestOptions) {
+		if o.headers == nil {
+			o.headers = map[string]string{}
+		}
+		o.headers[key] = value
+	}
+}
+
 func (c *Client) request(ctx context.Context, method, path string, opts ...requestOption) ([]byte, error) {
+	body, _, err := c.requestRaw(ctx, method, path, opts...)
+	return body, err
+}
+
+// requestRaw is request plus the response's Content-Type, for endpoints that
+// return a file rather than JSON.
+func (c *Client) requestRaw(ctx context.Context, method, path string, opts ...requestOption) ([]byte, string, error) {
 	ro := &requestOptions{}
 	for _, opt := range opts {
 		opt(ro)
@@ -145,7 +175,7 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 
 	u, err := url.Parse(c.baseURL + "/api" + path)
 	if err != nil {
-		return nil, fmt.Errorf("invalid URL: %w", err)
+		return nil, "", fmt.Errorf("invalid URL: %w", err)
 	}
 
 	// Build query params.
@@ -178,7 +208,7 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 	} else if ro.body != nil {
 		data, err := json.Marshal(ro.body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, "", fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(data)
 		contentType = "application/json"
@@ -186,7 +216,7 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -198,26 +228,33 @@ func (c *Client) request(ctx context.Context, method, path string, opts ...reque
 	if key, ok := IdempotencyKeyFromContext(ctx); ok {
 		req.Header.Set("Idempotency-Key", key)
 	}
+	for k, v := range ro.headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, parseError(resp.StatusCode, respBody)
+		apiErr := parseError(resp.StatusCode, respBody)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			apiErr.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
+		}
+		return nil, "", apiErr
 	}
 
-	return respBody, nil
+	return respBody, resp.Header.Get("Content-Type"), nil
 }
 
-func parseError(statusCode int, body []byte) error {
+func parseError(statusCode int, body []byte) *PostProxyError {
 	apiErr := &PostProxyError{
 		StatusCode: statusCode,
 		Message:    http.StatusText(statusCode),
@@ -234,4 +271,14 @@ func parseError(statusCode int, body []byte) error {
 	}
 
 	return apiErr
+}
+
+// parseRetryAfter reads a Retry-After header given in seconds. Returns 0 when
+// the header is missing or not a positive number.
+func parseRetryAfter(value string) int {
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || seconds <= 0 || math.IsInf(seconds, 0) || math.IsNaN(seconds) {
+		return 0
+	}
+	return int(math.Ceil(seconds))
 }

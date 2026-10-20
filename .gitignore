@@ -27,3 +27,8 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+
+# Compiled examples (`go build` inside an example dir names the binary after it)
+/manage-messages
+/examples/*/*
+!/examples/*/*.go

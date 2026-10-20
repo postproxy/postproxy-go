@@ -100,4 +100,19 @@ func main() {
 		log.Fatalf("failed to create poll: %v", err)
 	}
 	fmt.Printf("Created poll post: %s\n", post.ID)
+
+	// TikTok video with a custom cover uploaded from disk. A local CoverFile
+	// switches the request to multipart; a "data:" URL is sent as-is.
+	videoFormat := postproxy.TikTokFormatVideo
+	cover := "./cover.jpg"
+	post, err = client.Posts.Create(ctx, "Behind the scenes", []string{"tiktok"}, &postproxy.PostCreateOptions{
+		Media: []string{"https://example.com/bts.mp4"},
+		Platforms: &postproxy.PlatformParams{
+			TikTok: &postproxy.TikTokParams{Format: &videoFormat, CoverFile: &cover},
+		},
+	})
+	if err != nil {
+		log.Fatalf("failed to create cover post: %v", err)
+	}
+	fmt.Printf("Created cover post: %s\n", post.ID)
 }

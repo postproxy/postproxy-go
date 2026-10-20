@@ -405,3 +405,185 @@ func TestProfilesPostSync(t *testing.T) {
 		t.Errorf("expected status completed, got %q", sync.Status)
 	}
 }
+
+func TestProfilesNewFields(t *testing.T) {
+	c, _ := newRecordingClient(t, map[string]any{
+		"id": "p1", "name": "Acme", "username": "acme", "status": "inactive", "inactive_reason": "network_taken",
+		"platform": "instagram", "platform_id": "1789", "profile_group_id": "pg_1", "expires_at": nil, "post_count": 3,
+		"avatar_url": "https://cdn.test/a.jpg", "platform_url": "https://instagram.com/acme", "placements_sync_status": "synced",
+	})
+
+	p, err := c.Profiles.Get(context.Background(), "p1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.InactiveReason == nil || *p.InactiveReason != ProfileInactiveReasonNetworkTaken {
+		t.Errorf("unexpected inactive_reason: %v", p.InactiveReason)
+	}
+	if p.Username == nil || p.PlatformID == nil || p.AvatarURL == nil || p.PlatformURL == nil || p.PlacementsSyncStatus == nil {
+		t.Errorf("expected new fields to be set: %+v", p)
+	}
+}
+
+func TestProfilesDailyStats(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"data": map[string]any{
+		"profile_id": "p1", "attribution": "publish",
+		"records": []any{map[string]any{"date": "2026-09-01", "impressions": 10, "platform_stats": nil}},
+		"metrics": map[string]any{},
+	}})
+
+	attribution := DailyStatsAttributionPublish
+	result, err := c.Profiles.DailyStats(context.Background(), "p1", &DailyStatsOptions{
+		PlacementID: ptr("pl1"), From: ptr("2026-09-01"), To: ptr("2026-09-30"), Attribution: &attribution,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	record := result.Data.Records[0]
+	if record.Date != "2026-09-01" || record.Metrics["impressions"] != float64(10) {
+		t.Errorf("unexpected record: %+v", record)
+	}
+	if _, ok := record.Metrics["date"]; ok {
+		t.Error("date should not be in Metrics")
+	}
+
+	req := requests()[0]
+	if req.Path != "/api/profiles/p1/daily_stats" {
+		t.Errorf("unexpected path: %s", req.Path)
+	}
+	if req.Query.Get("attribution") != "publish" || req.Query.Get("placement_id") != "pl1" {
+		t.Errorf("unexpected query: %v", req.Query)
+	}
+}
+
+func TestProfilesFollowerHistory(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"data": map[string]any{"records": []any{
+		map[string]any{"date": "2026-09-01", "followers_gained": 5, "followers_lost": 1, "followers_change": 4, "followers_total": 100},
+	}}})
+
+	result, err := c.Profiles.FollowerHistory(context.Background(), "p1", &FollowerHistoryOptions{From: ptr("2026-09-01")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r := result.Data.Records[0]; r.FollowersTotal == nil || *r.FollowersTotal != 100 {
+		t.Errorf("unexpected record: %+v", r)
+	}
+	req := requests()[0]
+	if req.Path != "/api/profiles/p1/follower_history" || req.Query.Get("from") != "2026-09-01" {
+		t.Errorf("unexpected request: %s %v", req.Path, req.Query)
+	}
+}
+
+func TestProfilesParticipantStatus(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"is_verified_user": true, "fetched_at": "x"})
+
+	result, err := c.Profiles.ParticipantStatus(context.Background(), "p1", "igsid_1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsVerifiedUser == nil || !*result.IsVerifiedUser {
+		t.Errorf("unexpected status: %+v", result)
+	}
+	if requests()[0].Path != "/api/profiles/p1/participants/igsid_1" {
+		t.Errorf("unexpected path: %s", requests()[0].Path)
+	}
+}
+
+func TestProfilesResolveMention(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"urn": "urn:li:organization:1", "type": "organization", "name": "Acme", "vanity_name": "acme"})
+
+	result, err := c.Profiles.ResolveMention(context.Background(), "p1", "https://www.linkedin.com/company/acme", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.URN != "urn:li:organization:1" {
+		t.Errorf("unexpected urn: %s", result.URN)
+	}
+	if got := requests()[0].Query.Get("url"); got != "https://www.linkedin.com/company/acme" {
+		t.Errorf("unexpected url param: %s", got)
+	}
+}
+
+func TestProfilesInstagramAvailableAudio(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"data": []any{map[string]any{"id": "a1"}}})
+
+	audioType := InstagramAudioTypeMusic
+	result, err := c.Profiles.InstagramAvailableAudio(context.Background(), "p1", &InstagramAvailableAudioOptions{AudioType: &audioType, SearchQuery: ptr("summer")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Data[0]["id"] != "a1" {
+		t.Errorf("unexpected data: %v", result.Data)
+	}
+	req := requests()[0]
+	if req.Path != "/api/profiles/p1/instagram/available_audio" {
+		t.Errorf("unexpected path: %s", req.Path)
+	}
+	if req.Query.Get("audio_type") != "music" || req.Query.Get("search_query") != "summer" {
+		t.Errorf("unexpected query: %v", req.Query)
+	}
+}
+
+func TestProfilesFacebookPage(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"about": "Hi"})
+	ctx := context.Background()
+
+	page, err := c.Profiles.FacebookPage(ctx, "p1", "page_1", &FacebookPageOptions{Fields: ptr("about,website")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if page["about"] != "Hi" {
+		t.Errorf("unexpected page: %v", page)
+	}
+	_, _ = c.Profiles.UpdateFacebookPage(ctx, "p1", "page_1", map[string]any{"about": "New about"}, nil)
+
+	reqs := requests()
+	if reqs[0].Query.Get("page_id") != "page_1" || reqs[0].Query.Get("fields") != "about,website" {
+		t.Errorf("unexpected query: %v", reqs[0].Query)
+	}
+	if reqs[1].Method != "PATCH" || reqs[1].Path != "/api/profiles/p1/facebook/update_page" {
+		t.Errorf("unexpected request: %s %s", reqs[1].Method, reqs[1].Path)
+	}
+	assertJSON(t, reqs[1].JSON(t), `{"about":"New about","page_id":"page_1"}`)
+}
+
+func TestProfilesAssignToGroup(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "p1"})
+
+	if _, err := c.Profiles.AssignToGroup(context.Background(), "p1", "pg_2", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req := requests()[0]
+	if req.Method != "PATCH" || req.Path != "/api/profiles/p1/assign_to_group" {
+		t.Errorf("unexpected request: %s %s", req.Method, req.Path)
+	}
+	assertJSON(t, req.JSON(t), `{"target_profile_group_id":"pg_2"}`)
+}
+
+func TestProfilesChatSyncs(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "cs1", "status": "pending", "chats_seen": 0, "messages_imported": 0})
+	ctx := context.Background()
+
+	sync, err := c.Profiles.BackfillChats(ctx, "p1", "2026-01-01T00:00:00Z", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sync.ID != "cs1" || sync.Status != PostSyncStatusPending {
+		t.Errorf("unexpected sync: %+v", sync)
+	}
+	status := PostSyncStatusRunning
+	_, _ = c.Profiles.ChatSyncs(ctx, "p1", &ChatSyncListOptions{Status: &status, PerPage: ptr(5)})
+	_, _ = c.Profiles.ChatSync(ctx, "p1", "cs1", nil)
+
+	reqs := requests()
+	if reqs[0].Method != "POST" || reqs[0].Path != "/api/profiles/p1/backfill_chats" {
+		t.Errorf("unexpected request: %s %s", reqs[0].Method, reqs[0].Path)
+	}
+	assertJSON(t, reqs[0].JSON(t), `{"from":"2026-01-01T00:00:00Z"}`)
+	if reqs[1].Query.Get("status") != "running" || reqs[1].Query.Get("per_page") != "5" {
+		t.Errorf("unexpected query: %v", reqs[1].Query)
+	}
+	if reqs[2].Path != "/api/profiles/p1/chat_syncs/cs1" {
+		t.Errorf("unexpected path: %s", reqs[2].Path)
+	}
+}

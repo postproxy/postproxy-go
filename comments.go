@@ -62,6 +62,9 @@ func (s *CommentsService) ListAll(ctx context.Context, opts *BulkCommentListOpti
 		if len(opts.Profiles) > 0 {
 			params.Set("profiles", strings.Join(opts.Profiles, ","))
 		}
+		if opts.PlacementID != nil {
+			params.Set("placement_id", *opts.PlacementID)
+		}
 		if opts.From != nil {
 			params.Set("from", *opts.From)
 		}
@@ -133,6 +136,25 @@ func (s *CommentsService) Create(ctx context.Context, postID, profileID, text st
 	return &result, nil
 }
 
+// Edit edits a comment you published. Facebook and YouTube only. Runs in the
+// background — the outcome arrives as the comment.edited / comment.edit_failed
+// webhooks.
+func (s *CommentsService) Edit(ctx context.Context, postID, commentID, profileID, text string) (*AcceptedResponse, error) {
+	params := url.Values{}
+	params.Set("profile_id", profileID)
+
+	data, err := s.client.request(ctx, http.MethodPatch, "/posts/"+postID+"/comments/"+commentID, withParams(params), withJSON(map[string]string{"body": text}))
+	if err != nil {
+		return nil, err
+	}
+
+	var result AcceptedResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Delete deletes a comment.
 func (s *CommentsService) Delete(ctx context.Context, postID, commentID, profileID string) (*AcceptedResponse, error) {
 	params := url.Values{}
@@ -170,14 +192,46 @@ func (s *CommentsService) Unlike(ctx context.Context, postID, commentID, profile
 	return s.commentAction(ctx, postID, commentID, profileID, "unlike")
 }
 
+// Pin pins a comment. TikTok only.
+func (s *CommentsService) Pin(ctx context.Context, postID, commentID, profileID string) (*AcceptedResponse, error) {
+	return s.commentAction(ctx, postID, commentID, profileID, "pin")
+}
+
+// Unpin unpins a comment. TikTok only.
+func (s *CommentsService) Unpin(ctx context.Context, postID, commentID, profileID string) (*AcceptedResponse, error) {
+	return s.commentAction(ctx, postID, commentID, profileID, "unpin")
+}
+
 // PrivateReply sends a private reply (direct message) to the author of a comment.
-// Returns the created Message (Instagram/Facebook).
-func (s *CommentsService) PrivateReply(ctx context.Context, postID, commentID, profileID, text string) (*Message, error) {
+// Returns the created Message (Instagram/Facebook). One private reply per
+// comment, within 7 days of it. Pass PrivateReplyOptions to attach quick
+// replies, buttons, a card or a carousel; text may be empty when sending
+// Elements.
+func (s *CommentsService) PrivateReply(ctx context.Context, postID, commentID, profileID, text string, opts ...*PrivateReplyOptions) (*Message, error) {
 	params := url.Values{}
 	params.Set("profile_id", profileID)
 
+	body := map[string]any{"text": text}
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		if o.QuickReplies != nil {
+			body["quick_replies"] = o.QuickReplies
+		}
+		if o.Buttons != nil {
+			body["buttons"] = o.Buttons
+		}
+		if o.Card != nil {
+			body["card"] = o.Card
+		}
+		if o.Elements != nil {
+			body["elements"] = o.Elements
+		}
+	}
+
 	path := fmt.Sprintf("/posts/%s/comments/%s/private_reply", postID, commentID)
-	data, err := s.client.request(ctx, http.MethodPost, path, withParams(params), withJSON(map[string]string{"text": text}))
+	data, err := s.client.request(ctx, http.MethodPost, path, withParams(params), withJSON(body))
 	if err != nil {
 		return nil, err
 	}

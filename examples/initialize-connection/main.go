@@ -49,6 +49,34 @@ func main() {
 	}
 	fmt.Printf("Connect your Instagram account: %s\n", conn.URL)
 
+	// Instagram via Facebook login (needed to attach music to reels).
+	viaFacebook := postproxy.ConnectionOnboardingFacebook
+	igConn, err := client.ProfileGroups.InitializeConnection(
+		ctx,
+		group.ID,
+		postproxy.PlatformInstagram,
+		"https://myapp.com/callback",
+		&postproxy.ConnectionOptions{Onboarding: &viaFacebook},
+	)
+	if err != nil {
+		log.Fatalf("failed to initialize connection: %v", err)
+	}
+	fmt.Printf("Instagram (Facebook login): %s\n", igConn.URL)
+
+	// WhatsApp through the WhatsApp Business app (ConnectionOnboardingAPI for the Cloud API).
+	businessApp := postproxy.ConnectionOnboardingBusinessApp
+	waConn, err := client.ProfileGroups.InitializeConnection(
+		ctx,
+		group.ID,
+		postproxy.PlatformWhatsApp,
+		"https://myapp.com/callback",
+		&postproxy.ConnectionOptions{Onboarding: &businessApp},
+	)
+	if err != nil {
+		log.Fatalf("failed to initialize connection: %v", err)
+	}
+	fmt.Printf("Connect WhatsApp: %s\n", waConn.URL)
+
 	// After connecting, list a profile's placements (Pages, channels, locations)
 	placements, err := client.Profiles.Placements(ctx, "profile-id", nil)
 	if err != nil {

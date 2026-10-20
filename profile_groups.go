@@ -69,12 +69,35 @@ func (s *ProfileGroupsService) Delete(ctx context.Context, id string) (*DeleteRe
 	return &result, nil
 }
 
+// ConnectionOptions are the optional settings for InitializeConnection.
+type ConnectionOptions struct {
+	// Onboarding picks the flow: Instagram ConnectionOnboardingInstagram
+	// (default) or ConnectionOnboardingFacebook (Facebook login — needed for
+	// reel music); WhatsApp ConnectionOnboardingAPI or
+	// ConnectionOnboardingBusinessApp.
+	Onboarding *ConnectionOnboarding
+	// RefreshConnection re-authorizes an existing profile.
+	RefreshConnection *bool
+}
+
 // InitializeConnection starts an OAuth connection flow for a platform.
 // BlueSky and Telegram use dedicated helpers (ConnectBluesky, ConnectTelegram).
-func (s *ProfileGroupsService) InitializeConnection(ctx context.Context, id string, platform Platform, redirectURL string) (*ConnectionResponse, error) {
-	body := map[string]string{
+// Pass ConnectionOptions to choose the onboarding flow.
+func (s *ProfileGroupsService) InitializeConnection(ctx context.Context, id string, platform Platform, redirectURL string, opts ...*ConnectionOptions) (*ConnectionResponse, error) {
+	body := map[string]any{
 		"platform":     string(platform),
 		"redirect_url": redirectURL,
+	}
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		if o.Onboarding != nil {
+			body["onboarding"] = string(*o.Onboarding)
+		}
+		if o.RefreshConnection != nil {
+			body["refresh_connection"] = *o.RefreshConnection
+		}
 	}
 
 	data, err := s.client.request(ctx, http.MethodPost, "/profile_groups/"+id+"/initialize_connection", withJSON(body))

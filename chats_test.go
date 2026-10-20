@@ -176,3 +176,69 @@ func TestChatsUnarchive(t *testing.T) {
 		t.Errorf("expected archived false, got %v", chat.Archived)
 	}
 }
+
+func TestChatsCreateWhatsApp(t *testing.T) {
+	c, requests := newRecordingClient(t, mockChat)
+
+	placementID := "pn_1"
+	if _, err := c.Chats.Create(context.Background(), "prof_wa", "15551234567", &ChatCreateOptions{PlacementID: &placementID}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertJSON(t, requests()[0].JSON(t), `{"participant_external_id":"15551234567","placement_id":"pn_1"}`)
+}
+
+func TestChatsMarkRead(t *testing.T) {
+	c, requests := newRecordingClient(t, mockChat)
+
+	chat, err := c.Chats.MarkRead(context.Background(), "chat_xyz789", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chat.ID != "chat_xyz789" {
+		t.Errorf("unexpected chat: %+v", chat)
+	}
+	if req := requests()[0]; req.Method != "POST" || req.Path != "/api/chats/chat_xyz789/mark_read" {
+		t.Errorf("unexpected request: %s %s", req.Method, req.Path)
+	}
+}
+
+func TestChatsTyping(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"accepted": true})
+
+	started, err := c.Chats.StartTyping(context.Background(), "chat_xyz789", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Chats.StopTyping(context.Background(), "chat_xyz789", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !started.Accepted {
+		t.Error("expected accepted=true")
+	}
+	reqs := requests()
+	if reqs[0].Path != "/api/chats/chat_xyz789/start_typing" || reqs[1].Path != "/api/chats/chat_xyz789/stop_typing" {
+		t.Errorf("unexpected paths: %s, %s", reqs[0].Path, reqs[1].Path)
+	}
+}
+
+func TestChatsWhatsAppFields(t *testing.T) {
+	c, _ := newRecordingClient(t, map[string]any{
+		"id": "chat_wa", "profile_id": "prof_wa", "platform": "whatsapp",
+		"external_placement_id": "pn_1", "group": true, "within_messaging_window": false,
+		"participant_external_id": "15551234567", "created_at": "2026-09-01T00:00:00Z",
+	})
+
+	chat, err := c.Chats.Get(context.Background(), "chat_wa", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chat.Platform != PlatformWhatsApp || !chat.Group {
+		t.Errorf("unexpected chat: %+v", chat)
+	}
+	if chat.ExternalPlacementID == nil || *chat.ExternalPlacementID != "pn_1" {
+		t.Errorf("unexpected external_placement_id: %v", chat.ExternalPlacementID)
+	}
+	if chat.WithinMessagingWindow == nil || *chat.WithinMessagingWindow {
+		t.Errorf("unexpected within_messaging_window: %v", chat.WithinMessagingWindow)
+	}
+}

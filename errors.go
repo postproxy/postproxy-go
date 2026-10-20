@@ -7,6 +7,9 @@ type PostProxyError struct {
 	StatusCode int
 	Message    string
 	Response   map[string]any
+	// RetryAfter is the number of seconds to wait before retrying, parsed from
+	// the Retry-After header of a 429. Zero when the API didn't say.
+	RetryAfter int
 }
 
 func (e *PostProxyError) Error() string {
@@ -20,6 +23,21 @@ func (e *PostProxyError) Error() string {
 func IsAuthenticationError(err error) bool {
 	e, ok := err.(*PostProxyError)
 	return ok && e.StatusCode == 401
+}
+
+// IsForbiddenError reports whether the error is a 403 — the account is
+// canceled or past due, or the platform refused the action for lack of
+// permission.
+func IsForbiddenError(err error) bool {
+	e, ok := err.(*PostProxyError)
+	return ok && e.StatusCode == 403
+}
+
+// IsRateLimitError reports whether the error is a 429 — the platform is
+// rate-limiting. Wait RetryAfter seconds (when set) before retrying.
+func IsRateLimitError(err error) bool {
+	e, ok := err.(*PostProxyError)
+	return ok && e.StatusCode == 429
 }
 
 // IsNotFoundError reports whether the error is a 404 not found error.

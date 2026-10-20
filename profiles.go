@@ -293,3 +293,302 @@ func (s *ProfilesService) Delete(ctx context.Context, id string, opts *RequestOp
 	}
 	return &result, nil
 }
+
+// DailyStats returns the profile's per-day stats series. PlacementID is
+// required for facebook, linkedin, and telegram profiles.
+func (s *ProfilesService) DailyStats(ctx context.Context, id string, opts *DailyStatsOptions) (*DailyStatsResponse, error) {
+	var reqOpts []requestOption
+
+	if opts != nil {
+		params := url.Values{}
+		if opts.PlacementID != nil {
+			params.Set("placement_id", *opts.PlacementID)
+		}
+		if opts.From != nil {
+			params.Set("from", *opts.From)
+		}
+		if opts.To != nil {
+			params.Set("to", *opts.To)
+		}
+		if opts.Attribution != nil {
+			params.Set("attribution", string(*opts.Attribution))
+		}
+		if len(params) > 0 {
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		if opts.ProfileGroupID != nil {
+			reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/daily_stats", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DailyStatsResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// FollowerHistory returns daily follower gains, losses and totals.
+func (s *ProfilesService) FollowerHistory(ctx context.Context, id string, opts *FollowerHistoryOptions) (*FollowerHistoryResponse, error) {
+	var reqOpts []requestOption
+
+	if opts != nil {
+		params := url.Values{}
+		if opts.PlacementID != nil {
+			params.Set("placement_id", *opts.PlacementID)
+		}
+		if opts.From != nil {
+			params.Set("from", *opts.From)
+		}
+		if opts.To != nil {
+			params.Set("to", *opts.To)
+		}
+		if len(params) > 0 {
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		if opts.ProfileGroupID != nil {
+			reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/follower_history", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result FollowerHistoryResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ParticipantStatus reports whether an Instagram DM participant is verified
+// and follows you. Instagram only.
+func (s *ProfilesService) ParticipantStatus(ctx context.Context, id, userID string, opts *RequestOptions) (*ParticipantStatus, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/participants/"+url.PathEscape(userID), reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ParticipantStatus
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ResolveMention resolves a LinkedIn company page URL (or vanity name) to the
+// URN used to @-mention it in a post. LinkedIn only.
+func (s *ProfilesService) ResolveMention(ctx context.Context, id, pageURL string, opts *RequestOptions) (*ResolvedMention, error) {
+	params := url.Values{}
+	params.Set("url", pageURL)
+	reqOpts := []requestOption{withParams(params)}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/resolve_mention", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ResolvedMention
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// InstagramAvailableAudio lists music and original sounds an Instagram reel
+// can attach via InstagramParams.AudioID. Profiles connected via Facebook
+// login only.
+func (s *ProfilesService) InstagramAvailableAudio(ctx context.Context, id string, opts *InstagramAvailableAudioOptions) (*InstagramAvailableAudioResponse, error) {
+	var reqOpts []requestOption
+
+	if opts != nil {
+		params := url.Values{}
+		if opts.AudioType != nil {
+			params.Set("audio_type", string(*opts.AudioType))
+		}
+		if opts.SearchQuery != nil {
+			params.Set("search_query", *opts.SearchQuery)
+		}
+		if len(params) > 0 {
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		if opts.ProfileGroupID != nil {
+			reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/instagram/available_audio", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result InstagramAvailableAudioResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// FacebookPage reads a Facebook Page's about / contact fields. Facebook only;
+// pageID is the placement id from Placements.
+func (s *ProfilesService) FacebookPage(ctx context.Context, id, pageID string, opts *FacebookPageOptions) (map[string]any, error) {
+	params := url.Values{}
+	params.Set("page_id", pageID)
+	if opts != nil && opts.Fields != nil {
+		params.Set("fields", *opts.Fields)
+	}
+	reqOpts := []requestOption{withParams(params)}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/facebook/page", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// UpdateFacebookPage updates a Facebook Page's about / contact fields, e.g.
+// "about" (255 characters or fewer), "description", "website", "phone",
+// "emails".
+func (s *ProfilesService) UpdateFacebookPage(ctx context.Context, id, pageID string, fields map[string]any, opts *RequestOptions) (map[string]any, error) {
+	body := make(map[string]any, len(fields)+1)
+	for k, v := range fields {
+		body[k] = v
+	}
+	body["page_id"] = pageID
+
+	reqOpts := []requestOption{withJSON(body)}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPatch, "/profiles/"+id+"/facebook/update_page", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// AssignToGroup moves the profile (with its placements) to another profile group.
+func (s *ProfilesService) AssignToGroup(ctx context.Context, id, targetProfileGroupID string, opts *RequestOptions) (*Profile, error) {
+	reqOpts := []requestOption{withJSON(map[string]string{"target_profile_group_id": targetProfileGroupID})}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPatch, "/profiles/"+id+"/assign_to_group", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Profile
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// BackfillChats imports DM history back to `from`. Like BackfillPosts, it runs
+// in the background and only one runs per profile — poll ChatSync with the
+// returned ID for progress.
+func (s *ProfilesService) BackfillChats(ctx context.Context, id, from string, opts *RequestOptions) (*ChatSync, error) {
+	reqOpts := []requestOption{withJSON(map[string]string{"from": from})}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodPost, "/profiles/"+id+"/backfill_chats", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ChatSync
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ChatSyncs returns chat sync runs for a profile, newest first.
+func (s *ProfilesService) ChatSyncs(ctx context.Context, id string, opts *ChatSyncListOptions) (*PaginatedResponse[ChatSync], error) {
+	var reqOpts []requestOption
+
+	if opts != nil {
+		params := url.Values{}
+		if opts.Trigger != nil {
+			params.Set("trigger", string(*opts.Trigger))
+		}
+		if opts.Status != nil {
+			params.Set("status", string(*opts.Status))
+		}
+		if opts.Page != nil {
+			params.Set("page", strconv.Itoa(*opts.Page))
+		}
+		if opts.PerPage != nil {
+			params.Set("per_page", strconv.Itoa(*opts.PerPage))
+		}
+		if len(params) > 0 {
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		if opts.ProfileGroupID != nil {
+			reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		}
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/chat_syncs", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PaginatedResponse[ChatSync]
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ChatSync returns a single chat sync run.
+func (s *ProfilesService) ChatSync(ctx context.Context, id, chatSyncID string, opts *RequestOptions) (*ChatSync, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/profiles/"+id+"/chat_syncs/"+chatSyncID, reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ChatSync
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

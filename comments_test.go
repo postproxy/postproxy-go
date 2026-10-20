@@ -460,3 +460,70 @@ func TestCommentsListAllNoFilters(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCommentsEdit(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"accepted": true})
+
+	result, err := c.Comments.Edit(context.Background(), "post_1", "c_1", "prof_1", "Fixed typo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Accepted {
+		t.Error("expected accepted=true")
+	}
+	req := requests()[0]
+	if req.Method != "PATCH" || req.Path != "/api/posts/post_1/comments/c_1" || req.Query.Get("profile_id") != "prof_1" {
+		t.Errorf("unexpected request: %s %s %v", req.Method, req.Path, req.Query)
+	}
+	assertJSON(t, req.JSON(t), `{"body":"Fixed typo"}`)
+}
+
+func TestCommentsPinUnpin(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"accepted": true})
+
+	_, _ = c.Comments.Pin(context.Background(), "post_1", "c_1", "prof_1")
+	_, _ = c.Comments.Unpin(context.Background(), "post_1", "c_1", "prof_1")
+
+	reqs := requests()
+	if reqs[0].Path != "/api/posts/post_1/comments/c_1/pin" || reqs[1].Path != "/api/posts/post_1/comments/c_1/unpin" {
+		t.Errorf("unexpected paths: %s, %s", reqs[0].Path, reqs[1].Path)
+	}
+	for _, r := range reqs {
+		if r.Method != "POST" || r.Query.Get("profile_id") != "prof_1" {
+			t.Errorf("unexpected request: %s %v", r.Method, r.Query)
+		}
+	}
+}
+
+func TestCommentsPrivateReplyWithElements(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "msg_1"})
+
+	_, err := c.Comments.PrivateReply(context.Background(), "post_1", "c_1", "prof_1", "", &PrivateReplyOptions{
+		Elements: []MessageElement{{
+			Title:    "Sneaker",
+			ImageURL: "https://img.test/s.jpg",
+			Buttons:  []MessageButton{{Type: "web_url", Title: "Buy", URL: "https://shop.test"}},
+		}},
+		QuickReplies: []QuickReply{{Title: "More", Payload: "MORE"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertJSON(t, requests()[0].JSON(t), `{
+		"text": "",
+		"elements": [{"title":"Sneaker","image_url":"https://img.test/s.jpg","buttons":[{"type":"web_url","title":"Buy","url":"https://shop.test"}]}],
+		"quick_replies": [{"title":"More","payload":"MORE"}]
+	}`)
+}
+
+func TestCommentsListAllByPlacement(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"total": 0, "page": 1, "per_page": 20, "data": []any{}})
+
+	placementID := "page_1"
+	if _, err := c.Comments.ListAll(context.Background(), &BulkCommentListOptions{PlacementID: &placementID}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := requests()[0].Query.Get("placement_id"); got != "page_1" {
+		t.Errorf("expected placement_id=page_1, got %q", got)
+	}
+}

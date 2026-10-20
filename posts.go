@@ -78,7 +78,8 @@ func (s *PostsService) Get(ctx context.Context, id string, opts *RequestOptions)
 	return &result, nil
 }
 
-// Create creates a new post. If MediaFiles is set in opts, the request uses multipart/form-data.
+// Create creates a new post. If MediaFiles (or a local CoverFile in the
+// platform params) is set in opts, the request uses multipart/form-data.
 func (s *PostsService) Create(ctx context.Context, body string, profiles []string, opts *PostCreateOptions) (*Post, error) {
 	var reqOpts []requestOption
 
@@ -95,6 +96,9 @@ func (s *PostsService) Create(ctx context.Context, body string, profiles []strin
 
 	if opts != nil {
 		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+		if opts.SkipDuplicateCheck {
+			reqOpts = append(reqOpts, withHeader("X-Skip-Duplicate-Check", "true"))
+		}
 	}
 
 	data, err := s.client.request(ctx, http.MethodPost, "/posts", reqOpts...)
@@ -109,7 +113,10 @@ func (s *PostsService) Create(ctx context.Context, body string, profiles []strin
 	return &result, nil
 }
 
-// Update updates an existing post.
+// Update updates an existing post. On a published post only the body, the
+// YouTube title and the Pinterest title / destination link can change; the
+// edit is pushed to the platforms in the background and reported through the
+// platform_post.edited / platform_post.edit_failed webhooks.
 func (s *PostsService) Update(ctx context.Context, id string, opts *PostUpdateOptions) (*Post, error) {
 	var reqOpts []requestOption
 
@@ -141,7 +148,7 @@ func (s *PostsService) Update(ctx context.Context, id string, opts *PostUpdateOp
 }
 
 func needsUpdateFormData(opts *PostUpdateOptions) bool {
-	if len(opts.MediaFiles) > 0 {
+	if len(opts.MediaFiles) > 0 || hasLocalCoverFile(opts.Platforms) {
 		return true
 	}
 	for _, t := range opts.Thread {
@@ -224,8 +231,8 @@ func (s *PostsService) buildUpdateFormData(opts *PostUpdateOptions) ([]requestOp
 		}
 	}
 
-	if opts.Platforms != nil {
-		writePlatformParams(w, opts.Platforms)
+	if err := writePlatformParams(w, opts.Platforms); err != nil {
+		return nil, err
 	}
 
 	for i, child := range opts.Thread {
@@ -390,7 +397,7 @@ func (s *PostsService) Stats(ctx context.Context, postIDs []string, opts *PostSt
 }
 
 func needsFormData(opts *PostCreateOptions) bool {
-	if len(opts.MediaFiles) > 0 {
+	if len(opts.MediaFiles) > 0 || hasLocalCoverFile(opts.Platforms) {
 		return true
 	}
 	for _, t := range opts.Thread {
@@ -466,8 +473,8 @@ func (s *PostsService) buildFormData(body string, profiles []string, opts *PostC
 		}
 	}
 
-	if opts.Platforms != nil {
-		writePlatformParams(w, opts.Platforms)
+	if err := writePlatformParams(w, opts.Platforms); err != nil {
+		return nil, err
 	}
 
 	for i, child := range opts.Thread {
@@ -526,9 +533,47 @@ func (s *PostsService) buildFormData(body string, profiles []string, opts *PostC
 	return []requestOption{withFormData(&buf, w.FormDataContentType())}, nil
 }
 
-func writePlatformParams(w *multipart.Writer, pp *PlatformParams) {
+// isLocalCoverFile reports whether a cover_file value is a local path. A
+// base64 data URL is sent to the API as a plain string instead.
+func isLocalCoverFile(value *string) bool {
+	return value != nil && *value != "" && !strings.HasPrefix(*value, "data:")
+}
+
+func hasLocalCoverFile(pp *PlatformParams) bool {
 	if pp == nil {
-		return
+		return false
+	}
+	return (pp.Instagram != nil && isLocalCoverFile(pp.Instagram.CoverFile)) ||
+		(pp.TikTok != nil && isLocalCoverFile(pp.TikTok.CoverFile)) ||
+		(pp.YouTube != nil && isLocalCoverFile(pp.YouTube.CoverFile)) ||
+		(pp.Pinterest != nil && isLocalCoverFile(pp.Pinterest.CoverFile))
+}
+
+// writeFilePart attaches a local file to the form under name.
+func writeFilePart(w *multipart.Writer, name, filePath string) error {
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, name, filepath.Base(filePath)))
+	h.Set("Content-Type", mimeTypeFromPath(filePath))
+	part, err := w.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err := part.Write(fileData); err != nil {
+		return fmt.Errorf("failed to write file data: %w", err)
+	}
+	return nil
+}
+
+// writePlatformParams writes platform params as flat form fields. A local
+// cover_file is attached as a file.
+func writePlatformParams(w *multipart.Writer, pp *PlatformParams) error {
+	if pp == nil {
+		return nil
 	}
 
 	v := reflect.ValueOf(*pp)
@@ -542,6 +587,15 @@ func writePlatformParams(w *multipart.Writer, pp *PlatformParams) {
 
 		tag := t.Field(i).Tag.Get("json")
 		platform := strings.Split(tag, ",")[0]
+
+		if field.Kind() == reflect.Map {
+			for _, key := range field.MapKeys() {
+				prefix := fmt.Sprintf("platforms[%s][%v]", platform, key.Interface())
+				writeFormValue(w, prefix, reflect.ValueOf(field.MapIndex(key).Interface()))
+			}
+			continue
+		}
+
 		params := field.Elem()
 		paramsType := params.Type()
 
@@ -551,16 +605,38 @@ func writePlatformParams(w *multipart.Writer, pp *PlatformParams) {
 			key := strings.Split(pTag, ",")[0]
 			prefix := fmt.Sprintf("platforms[%s][%s]", platform, key)
 
-			if pField.Kind() == reflect.Slice {
-				for k := 0; k < pField.Len(); k++ {
-					_ = w.WriteField(prefix+"[]", fmt.Sprintf("%v", pField.Index(k).Interface()))
-				}
-			} else if pField.Kind() == reflect.Ptr {
-				if !pField.IsNil() {
-					_ = w.WriteField(prefix, fmt.Sprintf("%v", pField.Elem().Interface()))
+			if key == "cover_file" {
+				if cover, ok := pField.Interface().(*string); ok && isLocalCoverFile(cover) {
+					if err := writeFilePart(w, prefix, *cover); err != nil {
+						return err
+					}
+					continue
 				}
 			}
+			// A single alt text is sent as a plain string, as in JSON.
+			if alt, ok := pField.Interface().(AltText); ok && len(alt) == 1 {
+				_ = w.WriteField(prefix, alt[0])
+				continue
+			}
+			writeFormValue(w, prefix, pField)
 		}
+	}
+	return nil
+}
+
+func writeFormValue(w *multipart.Writer, prefix string, value reflect.Value) {
+	switch value.Kind() {
+	case reflect.Slice:
+		for k := 0; k < value.Len(); k++ {
+			_ = w.WriteField(prefix+"[]", fmt.Sprintf("%v", value.Index(k).Interface()))
+		}
+	case reflect.Ptr:
+		if !value.IsNil() {
+			_ = w.WriteField(prefix, fmt.Sprintf("%v", value.Elem().Interface()))
+		}
+	case reflect.Invalid:
+	default:
+		_ = w.WriteField(prefix, fmt.Sprintf("%v", value.Interface()))
 	}
 }
 

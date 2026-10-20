@@ -1,14 +1,25 @@
 package postproxy
 
+import "encoding/json"
+
 // Profile represents a social media profile.
 type Profile struct {
-	ID             string        `json:"id"`
-	Name           string        `json:"name"`
-	Status         ProfileStatus `json:"status"`
-	Platform       Platform      `json:"platform"`
-	ProfileGroupID string        `json:"profile_group_id"`
-	ExpiresAt      *string       `json:"expires_at"`
-	PostCount      int           `json:"post_count"`
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Username *string       `json:"username"`
+	Status   ProfileStatus `json:"status"`
+	// InactiveReason says why an inactive profile was deactivated;
+	// ProfileInactiveReasonNetworkTaken means the same account was connected elsewhere.
+	InactiveReason *ProfileInactiveReason `json:"inactive_reason"`
+	Platform       Platform               `json:"platform"`
+	// PlatformID is the account's id on the platform.
+	PlatformID           *string `json:"platform_id"`
+	ProfileGroupID       string  `json:"profile_group_id"`
+	ExpiresAt            *string `json:"expires_at"`
+	PostCount            int     `json:"post_count"`
+	AvatarURL            *string `json:"avatar_url"`
+	PlatformURL          *string `json:"platform_url"`
+	PlacementsSyncStatus *string `json:"placements_sync_status"`
 }
 
 // ProfileGroup represents a group of profiles.
@@ -32,15 +43,28 @@ type ErrorDetails struct {
 	PostproxyNote        *string `json:"postproxy_note"`
 }
 
+// PlatformAttachment is a file PostProxy generated for one platform, e.g. a TikTok cover.
+type PlatformAttachment struct {
+	ID          string  `json:"id"`
+	Type        string  `json:"type"`
+	Status      string  `json:"status"`
+	ContentType *string `json:"content_type"`
+	URL         *string `json:"url"`
+}
+
 // PlatformResult represents the result of posting to a specific platform.
 type PlatformResult struct {
-	Platform     Platform           `json:"platform"`
-	Status       PlatformPostStatus `json:"status"`
-	Params       map[string]any     `json:"params"`
-	Error        *string            `json:"error"`
-	ErrorDetails *ErrorDetails      `json:"error_details"`
-	AttemptedAt  *string            `json:"attempted_at"`
-	Insights     *Insights          `json:"insights"`
+	Platform     Platform             `json:"platform"`
+	ProfileID    string               `json:"profile_id"`
+	ProfileName  string               `json:"profile_name"`
+	Status       PlatformPostStatus   `json:"status"`
+	Permalink    *string              `json:"permalink"`
+	Params       map[string]any       `json:"params"`
+	Error        *string              `json:"error"`
+	ErrorDetails *ErrorDetails        `json:"error_details"`
+	AttemptedAt  *string              `json:"attempted_at"`
+	Insights     *Insights            `json:"insights"`
+	Attachments  []PlatformAttachment `json:"attachments,omitempty"`
 }
 
 // MediaPlatformError represents a per-platform error encountered while uploading a media item.
@@ -67,6 +91,9 @@ type ThreadChild struct {
 	ID    string  `json:"id"`
 	Body  string  `json:"body"`
 	Media []Media `json:"media"`
+	// Platforms shows whether this thread item went out — each one is
+	// delivered separately.
+	Platforms []PlatformResult `json:"platforms"`
 }
 
 // ThreadChildInput represents a thread child in a create request.
@@ -78,11 +105,14 @@ type ThreadChildInput struct {
 
 // Post represents a social media post.
 type Post struct {
-	ID            string           `json:"id"`
-	Body          string           `json:"body"`
-	Status        PostStatus       `json:"status"`
-	ScheduledAt   *string          `json:"scheduled_at"`
-	CreatedAt     string           `json:"created_at"`
+	ID          string     `json:"id"`
+	Body        string     `json:"body"`
+	Status      PostStatus `json:"status"`
+	ScheduledAt *string    `json:"scheduled_at"`
+	CreatedAt   string     `json:"created_at"`
+	Draft       *bool      `json:"draft,omitempty"`
+	// Source is "postproxy" or "imported".
+	Source        *string          `json:"source,omitempty"`
 	Media         []Media          `json:"media"`
 	Platforms     []PlatformResult `json:"platforms"`
 	Thread        []ThreadChild    `json:"thread"`
@@ -92,11 +122,46 @@ type Post struct {
 
 // Placement represents a placement option for a profile.
 type Placement struct {
-	ID       string         `json:"id"`
-	Name     string         `json:"name"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	AvatarURL *string        `json:"avatar_url,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 	// ProfileGroupID is set in the response of AssignPlacementToGroup.
 	ProfileGroupID string `json:"profile_group_id,omitempty"`
+}
+
+// AccountPlacementProfile is a connected profile a placement is reachable through.
+type AccountPlacementProfile struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Connected bool   `json:"connected"`
+}
+
+// AccountPlacement is an account-level placement, returned by
+// PlacementsService.List. A placement (a Facebook Page, LinkedIn organization,
+// WhatsApp number, ...) can be reachable through several connected profiles;
+// one of them is active.
+type AccountPlacement struct {
+	ID             string                    `json:"id"`
+	Platform       Platform                  `json:"platform"`
+	ExternalID     string                    `json:"external_id"`
+	Name           string                    `json:"name"`
+	AvatarURL      *string                   `json:"avatar_url"`
+	Status         string                    `json:"status"`
+	ActiveProfile  AccountPlacementProfile   `json:"active_profile"`
+	LinkedProfiles []AccountPlacementProfile `json:"linked_profiles"`
+}
+
+// APIKey is a profile-group-scoped API key.
+type APIKey struct {
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	ProfileGroupID *string `json:"profile_group_id"`
+	Sandbox        bool    `json:"sandbox"`
+	// Token is only returned by APIKeysService.Create — store it, it can't be
+	// read again.
+	Token     *string `json:"token,omitempty"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // IceBreaker represents an Instagram DM ice breaker (FAQ prompt).
@@ -194,24 +259,72 @@ type ProfileStatsOptions struct {
 	ProfileGroupID *string
 }
 
+// AltText is alt text for a post's media, one entry per media item in order.
+// A single entry is sent as a plain string, which the API applies to the first
+// media item.
+type AltText []string
+
+// MarshalJSON sends a single entry as a string and several as an array.
+func (a AltText) MarshalJSON() ([]byte, error) {
+	if len(a) == 1 {
+		return json.Marshal(a[0])
+	}
+	return json.Marshal([]string(a))
+}
+
+// UnmarshalJSON accepts a string or an array of strings.
+func (a *AltText) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*a = AltText{single}
+		return nil
+	}
+	var list []string
+	if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	}
+	*a = list
+	return nil
+}
+
 // FacebookParams contains Facebook-specific post parameters.
 type FacebookParams struct {
 	Format       *FacebookFormat `json:"format,omitempty"`
 	Title        *string         `json:"title,omitempty"`
 	FirstComment *string         `json:"first_comment,omitempty"`
 	PageID       *string         `json:"page_id,omitempty"`
+	// Link makes a link post: Facebook renders the preview card. Text-only, no media.
+	Link    *string `json:"link,omitempty"`
+	AltText AltText `json:"alt_text,omitempty"`
+	// MadeWithAI applies to photo posts only; videos and reels ignore it.
+	MadeWithAI *bool `json:"made_with_ai,omitempty"`
+	// Countries are ISO 3166-1 alpha-2 codes; viewers elsewhere won't see the post.
+	Countries []string `json:"countries,omitempty"`
 }
 
 // InstagramParams contains Instagram-specific post parameters.
 type InstagramParams struct {
-	Format        *InstagramFormat   `json:"format,omitempty"`
-	FirstComment  *string            `json:"first_comment,omitempty"`
-	Collaborators []string           `json:"collaborators,omitempty"`
-	CoverURL      *string            `json:"cover_url,omitempty"`
-	AudioName     *string            `json:"audio_name,omitempty"`
-	TrialStrategy *bool              `json:"trial_strategy,omitempty"`
-	ThumbOffset   *int               `json:"thumb_offset,omitempty"`
-	UserTags      []InstagramUserTag `json:"user_tags,omitempty"`
+	Format        *InstagramFormat `json:"format,omitempty"`
+	FirstComment  *string          `json:"first_comment,omitempty"`
+	Collaborators []string         `json:"collaborators,omitempty"`
+	CoverURL      *string          `json:"cover_url,omitempty"`
+	// CoverFile is a local path to a cover image, uploaded with the post. A
+	// base64 data URL ("data:image/jpeg;base64,...") is sent as-is instead.
+	CoverFile *string `json:"cover_file,omitempty"`
+	AudioName *string `json:"audio_name,omitempty"`
+	// AudioID is a music or sound id from ProfilesService.InstagramAvailableAudio.
+	// Profiles connected via Facebook login only.
+	AudioID *string `json:"audio_id,omitempty"`
+	// AudioVolume is 1-100, default 100. Facebook-login profiles only.
+	AudioVolume *int `json:"audio_volume,omitempty"`
+	VideoVolume *int `json:"video_volume,omitempty"`
+	// StripAudio removes the video's own audio track (reel, story).
+	StripAudio    *bool                   `json:"strip_audio,omitempty"`
+	TrialStrategy *InstagramTrialStrategy `json:"trial_strategy,omitempty"`
+	ThumbOffset   *int                    `json:"thumb_offset,omitempty"`
+	UserTags      []InstagramUserTag      `json:"user_tags,omitempty"`
+	AltText       AltText                 `json:"alt_text,omitempty"`
+	MadeWithAI    *bool                   `json:"made_with_ai,omitempty"`
 }
 
 // InstagramUserTag is an Instagram account to tag in a post. Images require X
@@ -237,24 +350,50 @@ type TikTokParams struct {
 	DisableStitch      *bool          `json:"disable_stitch,omitempty"`
 	BrandContentToggle *bool          `json:"brand_content_toggle,omitempty"`
 	BrandOrganicToggle *bool          `json:"brand_organic_toggle,omitempty"`
+	// UploadAsDraft sends the video to the creator's TikTok inbox as a draft
+	// instead of publishing it.
+	UploadAsDraft *bool `json:"upload_as_draft,omitempty"`
+	// CoverURL is a custom video cover. Profiles connected before 2026-09-30
+	// must reconnect.
+	CoverURL *string `json:"cover_url,omitempty"`
+	// CoverFile is a local path to a cover image, uploaded with the post. A
+	// base64 data URL ("data:image/jpeg;base64,...") is sent as-is instead.
+	CoverFile *string `json:"cover_file,omitempty"`
+	// ThumbOffset is the frame to use as cover, in milliseconds. CoverURL wins
+	// if both are set.
+	ThumbOffset *int `json:"thumb_offset,omitempty"`
 }
 
 // LinkedInParams contains LinkedIn-specific post parameters.
 type LinkedInParams struct {
 	Format         *LinkedInFormat `json:"format,omitempty"`
 	OrganizationID *string         `json:"organization_id,omitempty"`
+	// ReshareURN is the URN of a post to reshare, e.g. "urn:li:share:123".
+	ReshareURN *string `json:"reshare_urn,omitempty"`
+	AltText    AltText `json:"alt_text,omitempty"`
+	// Countries applies to organization pages only; up to 25 ISO 3166-1 alpha-2 codes.
+	Countries []string `json:"countries,omitempty"`
+	// PollQuestion is required when Format is "poll": 140 characters or fewer.
+	PollQuestion *string `json:"poll_question,omitempty"`
+	// PollOptions is required when Format is "poll": 2-4 options, max 30 characters each.
+	PollOptions []string `json:"poll_options,omitempty"`
+	// PollDurationDays is 1, 3, 7 (default) or 14.
+	PollDurationDays *int `json:"poll_duration_days,omitempty"`
 }
 
 // YouTubeParams contains YouTube-specific post parameters.
 type YouTubeParams struct {
-	Format                 *YouTubeFormat  `json:"format,omitempty"`
-	Title                  *string         `json:"title,omitempty"`
-	PrivacyStatus          *YouTubePrivacy `json:"privacy_status,omitempty"`
-	CoverURL               *string         `json:"cover_url,omitempty"`
-	MadeForKids            *bool           `json:"made_for_kids,omitempty"`
-	Tags                   []string        `json:"tags,omitempty"`
-	CategoryID             *string         `json:"category_id,omitempty"`
-	ContainsSyntheticMedia *bool           `json:"contains_synthetic_media,omitempty"`
+	Format        *YouTubeFormat  `json:"format,omitempty"`
+	Title         *string         `json:"title,omitempty"`
+	PrivacyStatus *YouTubePrivacy `json:"privacy_status,omitempty"`
+	CoverURL      *string         `json:"cover_url,omitempty"`
+	// CoverFile is a local path to a cover image, uploaded with the post. A
+	// base64 data URL ("data:image/jpeg;base64,...") is sent as-is instead.
+	CoverFile              *string  `json:"cover_file,omitempty"`
+	MadeForKids            *bool    `json:"made_for_kids,omitempty"`
+	Tags                   []string `json:"tags,omitempty"`
+	CategoryID             *string  `json:"category_id,omitempty"`
+	ContainsSyntheticMedia *bool    `json:"contains_synthetic_media,omitempty"`
 }
 
 // PinterestParams contains Pinterest-specific post parameters.
@@ -264,17 +403,26 @@ type PinterestParams struct {
 	BoardID         *string          `json:"board_id,omitempty"`
 	DestinationLink *string          `json:"destination_link,omitempty"`
 	CoverURL        *string          `json:"cover_url,omitempty"`
-	ThumbOffset     *int             `json:"thumb_offset,omitempty"`
+	// CoverFile is a local path to a cover image, uploaded with the post. A
+	// base64 data URL ("data:image/jpeg;base64,...") is sent as-is instead.
+	CoverFile   *string `json:"cover_file,omitempty"`
+	ThumbOffset *int    `json:"thumb_offset,omitempty"`
+	AltText     AltText `json:"alt_text,omitempty"`
 }
 
 // ThreadsParams contains Threads-specific post parameters.
 type ThreadsParams struct {
-	Format *ThreadsFormat `json:"format,omitempty"`
+	Format  *ThreadsFormat `json:"format,omitempty"`
+	AltText AltText        `json:"alt_text,omitempty"`
+	// TopicTag is one tag, 50 characters or fewer, without the leading # — no
+	// "." or "&".
+	TopicTag *string `json:"topic_tag,omitempty"`
 }
 
 // TwitterParams contains Twitter-specific post parameters.
 type TwitterParams struct {
-	Format *TwitterFormat `json:"format,omitempty"`
+	Format  *TwitterFormat `json:"format,omitempty"`
+	AltText AltText        `json:"alt_text,omitempty"`
 	// PollOptions is required when Format is "poll": 2-4 options, max 25 characters each.
 	PollOptions []string `json:"poll_options,omitempty"`
 	// PollDurationMinutes is required when Format is "poll": 5 to 10080 minutes (7 days).
@@ -283,7 +431,8 @@ type TwitterParams struct {
 
 // BlueskyParams contains Bluesky-specific post parameters.
 type BlueskyParams struct {
-	Format *BlueskyFormat `json:"format,omitempty"`
+	Format  *BlueskyFormat `json:"format,omitempty"`
+	AltText AltText        `json:"alt_text,omitempty"`
 }
 
 // TelegramParams contains Telegram-specific post parameters. ChatID is required.
@@ -411,6 +560,7 @@ type Comment struct {
 	Permalink        *string        `json:"permalink"`
 	PlatformData     any            `json:"platform_data"`
 	Attachments      []Attachment   `json:"attachments"`
+	ExternalEditedAt *string        `json:"external_edited_at"`
 	PostedAt         *string        `json:"posted_at"`
 	CreatedAt        string         `json:"created_at"`
 	Replies          []Comment      `json:"replies"`
@@ -437,6 +587,7 @@ type BulkComment struct {
 	Permalink        *string        `json:"permalink"`
 	PlatformData     any            `json:"platform_data"`
 	Attachments      []Attachment   `json:"attachments"`
+	ExternalEditedAt *string        `json:"external_edited_at"`
 	PostedAt         *string        `json:"posted_at"`
 	CreatedAt        string         `json:"created_at"`
 }
@@ -446,6 +597,7 @@ type BulkComment struct {
 type PostSync struct {
 	ID          string          `json:"id"`
 	ProfileID   string          `json:"profile_id"`
+	PlacementID *string         `json:"placement_id"`
 	Kind        string          `json:"kind"`
 	Trigger     PostSyncTrigger `json:"trigger"`
 	Status      PostSyncStatus  `json:"status"`
@@ -462,6 +614,162 @@ type PostSync struct {
 	CreatedAt      string  `json:"created_at"`
 }
 
+// ChatSync records one DM import for a profile — started by
+// ProfilesService.BackfillChats or on connect.
+type ChatSync struct {
+	ID               string          `json:"id"`
+	ProfileID        string          `json:"profile_id"`
+	PlacementID      *string         `json:"placement_id"`
+	Kind             string          `json:"kind"`
+	Trigger          PostSyncTrigger `json:"trigger"`
+	Status           PostSyncStatus  `json:"status"`
+	StartedAt        *string         `json:"started_at"`
+	CompletedAt      *string         `json:"completed_at"`
+	ChatsSeen        int             `json:"chats_seen"`
+	MessagesImported int             `json:"messages_imported"`
+	BackfillFrom     *string         `json:"backfill_from"`
+	OldestUpdatedAt  *string         `json:"oldest_updated_at"`
+	Error            *string         `json:"error"`
+	CreatedAt        string          `json:"created_at"`
+}
+
+// ChatSyncListOptions contains options for ProfilesService.ChatSyncs.
+type ChatSyncListOptions struct {
+	Trigger        *PostSyncTrigger
+	Status         *PostSyncStatus
+	Page           *int
+	PerPage        *int
+	ProfileGroupID *string
+}
+
+// DailyStatsRecord is one day of a DailyStats series. Normalized metrics
+// (e.g. "impressions", "viewers") are top-level keys of the record; they are
+// collected in Metrics.
+type DailyStatsRecord struct {
+	Date          string         `json:"date"`
+	PlatformStats map[string]any `json:"platform_stats"`
+	Metrics       map[string]any `json:"-"`
+}
+
+// UnmarshalJSON collects every key other than date and platform_stats into Metrics.
+func (r *DailyStatsRecord) UnmarshalJSON(data []byte) error {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if date, ok := raw["date"].(string); ok {
+		r.Date = date
+	}
+	if ps, ok := raw["platform_stats"].(map[string]any); ok {
+		r.PlatformStats = ps
+	}
+	delete(raw, "date")
+	delete(raw, "platform_stats")
+	r.Metrics = raw
+	return nil
+}
+
+// DailyStats is a profile's per-day series returned by ProfilesService.DailyStats.
+type DailyStats struct {
+	ProfileID    string                `json:"profile_id"`
+	Platform     Platform              `json:"platform"`
+	PlacementID  *string               `json:"placement_id"`
+	Attribution  DailyStatsAttribution `json:"attribution"`
+	From         string                `json:"from"`
+	To           string                `json:"to"`
+	DataTimezone *string               `json:"data_timezone"`
+	Records      []DailyStatsRecord    `json:"records"`
+	// Metrics describes each metric in Records.
+	Metrics map[string]any `json:"metrics"`
+}
+
+// DailyStatsResponse wraps the data field returned by GET /profiles/:id/daily_stats.
+type DailyStatsResponse struct {
+	Data DailyStats `json:"data"`
+}
+
+// DailyStatsOptions are the optional query parameters for ProfilesService.DailyStats.
+type DailyStatsOptions struct {
+	PlacementID *string
+	From        *string
+	To          *string
+	// Attribution DailyStatsAttributionPublish counts post metrics toward the
+	// day the post was published instead of the day they were received.
+	Attribution    *DailyStatsAttribution
+	ProfileGroupID *string
+}
+
+// FollowerHistoryRecord is one day of follower changes.
+type FollowerHistoryRecord struct {
+	Date            string `json:"date"`
+	FollowersGained *int   `json:"followers_gained"`
+	FollowersLost   *int   `json:"followers_lost"`
+	FollowersChange *int   `json:"followers_change"`
+	FollowersTotal  *int   `json:"followers_total"`
+}
+
+// FollowerHistory is returned by ProfilesService.FollowerHistory.
+type FollowerHistory struct {
+	ProfileID   string                  `json:"profile_id"`
+	Platform    Platform                `json:"platform"`
+	PlacementID *string                 `json:"placement_id"`
+	From        string                  `json:"from"`
+	To          string                  `json:"to"`
+	Records     []FollowerHistoryRecord `json:"records"`
+}
+
+// FollowerHistoryResponse wraps the data field returned by GET /profiles/:id/follower_history.
+type FollowerHistoryResponse struct {
+	Data FollowerHistory `json:"data"`
+}
+
+// FollowerHistoryOptions are the optional query parameters for ProfilesService.FollowerHistory.
+type FollowerHistoryOptions struct {
+	PlacementID    *string
+	From           *string
+	To             *string
+	ProfileGroupID *string
+}
+
+// ParticipantStatus says whether an Instagram DM participant is verified and
+// follows you. Cached for a short while server-side.
+type ParticipantStatus struct {
+	IsVerifiedUser       *bool  `json:"is_verified_user,omitempty"`
+	IsUserFollowBusiness *bool  `json:"is_user_follow_business,omitempty"`
+	IsBusinessFollowUser *bool  `json:"is_business_follow_user,omitempty"`
+	FetchedAt            string `json:"fetched_at"`
+}
+
+// ResolvedMention turns a LinkedIn company page URL (or its vanity name) into
+// a URN you can @-mention in a post body.
+type ResolvedMention struct {
+	URN        string `json:"urn"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
+	VanityName string `json:"vanity_name"`
+}
+
+// InstagramAvailableAudioOptions are the optional query parameters for
+// ProfilesService.InstagramAvailableAudio.
+type InstagramAvailableAudioOptions struct {
+	AudioType      *InstagramAudioType
+	SearchQuery    *string
+	ProfileGroupID *string
+}
+
+// InstagramAvailableAudioResponse lists music and original sounds a reel can
+// attach via InstagramParams.AudioID.
+type InstagramAvailableAudioResponse struct {
+	Data []map[string]any `json:"data"`
+}
+
+// FacebookPageOptions are the optional parameters for ProfilesService.FacebookPage.
+type FacebookPageOptions struct {
+	// Fields is a comma-separated list of Page fields to read.
+	Fields         *string
+	ProfileGroupID *string
+}
+
 // Reaction represents an emoji reaction on a message.
 type Reaction struct {
 	SenderExternalID string  `json:"sender_external_id"`
@@ -472,9 +780,13 @@ type Reaction struct {
 
 // Chat represents a direct-message conversation with a participant.
 type Chat struct {
-	ID                     string         `json:"id"`
-	ProfileID              string         `json:"profile_id"`
-	Platform               Platform       `json:"platform"`
+	ID        string   `json:"id"`
+	ProfileID string   `json:"profile_id"`
+	Platform  Platform `json:"platform"`
+	// ExternalPlacementID is the page / phone number the chat runs through.
+	ExternalPlacementID *string `json:"external_placement_id"`
+	// Group is true for a WhatsApp group chat.
+	Group                  bool           `json:"group"`
 	ParticipantExternalID  string         `json:"participant_external_id"`
 	ParticipantUsername    *string        `json:"participant_username"`
 	ParticipantName        *string        `json:"participant_name"`
@@ -485,7 +797,10 @@ type Chat struct {
 	LastMessageAt          *string        `json:"last_message_at"`
 	Metadata               map[string]any `json:"metadata"`
 	Archived               *bool          `json:"archived,omitempty"`
-	CreatedAt              string         `json:"created_at"`
+	// WithinMessagingWindow is WhatsApp-only: whether the 24-hour customer
+	// service window is open. When it's closed only a template can be sent.
+	WithinMessagingWindow *bool  `json:"within_messaging_window,omitempty"`
+	CreatedAt             string `json:"created_at"`
 }
 
 // QuickReply is a tappable chip rendered above the participant's composer,
@@ -529,6 +844,76 @@ type MessageCard struct {
 	DefaultAction *CardDefaultAction `json:"default_action,omitempty"`
 }
 
+// MessageElement is one card of a horizontally scrolling carousel. Facebook
+// and Instagram only; up to 10 per send. Title plus at least one other field
+// is required.
+type MessageElement struct {
+	// 80 characters or fewer.
+	Title         string             `json:"title"`
+	Subtitle      string             `json:"subtitle,omitempty"`
+	ImageURL      string             `json:"image_url,omitempty"`
+	DefaultAction *CardDefaultAction `json:"default_action,omitempty"`
+	// Up to 3.
+	Buttons []MessageButton `json:"buttons,omitempty"`
+}
+
+// TemplateButtonParam fills in a dynamic template button. SubType is "url",
+// "copy_code", "flow", "quick_reply" or "voice_call"; the remaining
+// sub-type-specific fields (e.g. "text", "coupon_code") go in Extra.
+type TemplateButtonParam struct {
+	Index   int
+	SubType string
+	Extra   map[string]any
+}
+
+// MarshalJSON flattens Extra next to index and sub_type.
+func (p TemplateButtonParam) MarshalJSON() ([]byte, error) {
+	out := make(map[string]any, len(p.Extra)+2)
+	for k, v := range p.Extra {
+		out[k] = v
+	}
+	out["index"] = p.Index
+	out["sub_type"] = p.SubType
+	return json.Marshal(out)
+}
+
+// TemplateHeaderMedia is an image, video or document template header, given
+// by Link or by uploaded media ID.
+type TemplateHeaderMedia struct {
+	Link string `json:"link,omitempty"`
+	ID   string `json:"id,omitempty"`
+}
+
+// MessageTemplateInput sends a WhatsApp template. Address the template by ID
+// (PostProxy or Meta id) or by Name (plus Language when it exists in several).
+type MessageTemplateInput struct {
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Language string `json:"language,omitempty"`
+	// Variables are positional values: header, then body, then dynamic URL buttons.
+	Variables      []string              `json:"variables,omitempty"`
+	ButtonParams   []TemplateButtonParam `json:"button_params,omitempty"`
+	HeaderMedia    *TemplateHeaderMedia  `json:"header_media,omitempty"`
+	HeaderLocation *MessageLocation      `json:"header_location,omitempty"`
+}
+
+// MessageLocation is a WhatsApp location pin.
+type MessageLocation struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Name      string  `json:"name,omitempty"`
+	Address   string  `json:"address,omitempty"`
+}
+
+// MessageTemplateRef identifies the template an outbound WhatsApp message was sent from.
+type MessageTemplateRef struct {
+	ID         string   `json:"id"`
+	ExternalID *string  `json:"external_id"`
+	Name       string   `json:"name"`
+	Language   string   `json:"language"`
+	Variables  []string `json:"variables"`
+}
+
 // TappedActionKind identifies which interactive element a participant tapped.
 type TappedActionKind = string
 
@@ -562,6 +947,7 @@ type Message struct {
 	Tag                 *string          `json:"tag"`
 	ExternalCommentID   *string          `json:"external_comment_id"`
 	ErrorMessage        *string          `json:"error_message"`
+	ErrorDetails        *ErrorDetails    `json:"error_details,omitempty"`
 	PlatformData        map[string]any   `json:"platform_data"`
 	ExternalPostedAt    *string          `json:"external_posted_at"`
 	ExternalDeliveredAt *string          `json:"external_delivered_at"`
@@ -572,12 +958,19 @@ type Message struct {
 	QuickReplies        []QuickReply     `json:"quick_replies"`
 	Buttons             []MessageButton  `json:"buttons"`
 	Card                *MessageCard     `json:"card"`
+	Elements            []MessageElement `json:"elements"`
 	TappedAction        *TappedAction    `json:"tapped_action"`
-	ExternalDeletedAt   *string          `json:"external_deleted_at"`
-	Reactions           []Reaction       `json:"reactions"`
-	Attachments         []Attachment     `json:"attachments"`
-	IsUnsupported       bool             `json:"is_unsupported"`
-	CreatedAt           string           `json:"created_at"`
+	StoryReply          map[string]any   `json:"story_reply"`
+	// Interactive, Location, Contacts and Template are WhatsApp-only.
+	Interactive       map[string]any      `json:"interactive"`
+	Location          *MessageLocation    `json:"location"`
+	Contacts          []map[string]any    `json:"contacts"`
+	Template          *MessageTemplateRef `json:"template,omitempty"`
+	ExternalDeletedAt *string             `json:"external_deleted_at"`
+	Reactions         []Reaction          `json:"reactions"`
+	Attachments       []Attachment        `json:"attachments"`
+	IsUnsupported     bool                `json:"is_unsupported"`
+	CreatedAt         string              `json:"created_at"`
 }
 
 // ChatListOptions contains options for listing chats.
@@ -593,7 +986,10 @@ type ChatListOptions struct {
 type ChatCreateOptions struct {
 	ParticipantUsername *string
 	ParticipantName     *string
-	ProfileGroupID      *string
+	// PlacementID is required for WhatsApp: the phone number id from
+	// ProfilesService.Placements.
+	PlacementID    *string
+	ProfileGroupID *string
 }
 
 // MessageListOptions contains options for listing messages.
@@ -622,7 +1018,24 @@ type MessageSendOptions struct {
 	QuickReplies      []QuickReply
 	Buttons           []MessageButton
 	// Requires Buttons.
-	Card           *MessageCard
+	Card *MessageCard
+	// Elements is a carousel of up to 10 cards (Facebook and Instagram). Can't
+	// be combined with Body, Buttons or Card.
+	Elements []MessageElement
+	// WhatsApp only. Send exactly one of Body, Media, Template, Interactive,
+	// Location or Contacts. Outside the 24-hour window only a Template gets
+	// through.
+	Template    *MessageTemplateInput
+	Interactive map[string]any
+	Location    *MessageLocation
+	Contacts    []map[string]any
+	// Category "utility" sends a text message under the utility category.
+	Category    *string
+	LinkPreview *bool
+	// VoiceNote delivers an audio attachment as a voice note.
+	VoiceNote *bool
+	// Filename is the file name shown for a document attachment.
+	Filename       *string
 	ProfileGroupID *string
 }
 
@@ -679,8 +1092,10 @@ type CommentListOptions struct {
 // BulkCommentListOptions contains options for CommentsService.ListAll. Every
 // field is optional. Profiles takes profile IDs or network names, mixed.
 type BulkCommentListOptions struct {
-	PostIDs        []string
-	Profiles       []string
+	PostIDs  []string
+	Profiles []string
+	// PlacementID narrows to one page / organization.
+	PlacementID    *string
 	From           *string
 	To             *string
 	Page           *int
@@ -695,6 +1110,16 @@ type PostSyncListOptions struct {
 	Page           *int
 	PerPage        *int
 	ProfileGroupID *string
+}
+
+// PrivateReplyOptions contains the interactive extras for
+// CommentsService.PrivateReply. They work as in MessageSendOptions; the text
+// may be empty when sending Elements.
+type PrivateReplyOptions struct {
+	QuickReplies []QuickReply
+	Buttons      []MessageButton
+	Card         *MessageCard
+	Elements     []MessageElement
 }
 
 // CommentCreateOptions contains options for creating a comment.
@@ -733,6 +1158,9 @@ type PostCreateOptions struct {
 	QueueID        *string
 	QueuePriority  *string
 	ProfileGroupID *string
+	// SkipDuplicateCheck publishes even if an identical post was just
+	// submitted, instead of failing with a 409.
+	SkipDuplicateCheck bool
 }
 
 // PostDeleteOptions contains options for deleting a post.
@@ -754,6 +1182,11 @@ type PostDeleteOnPlatformOptions struct {
 }
 
 // PostUpdateOptions contains options for updating a post.
+//
+// On a published post only Body, Platforms.YouTube.Title,
+// Platforms.Pinterest.Title and Platforms.Pinterest.DestinationLink can
+// change; the edit is pushed to the platforms in the background (the
+// platform_post.edited / platform_post.edit_failed webhooks).
 type PostUpdateOptions struct {
 	Body           *string
 	Profiles       []string
@@ -817,4 +1250,25 @@ type QueueUpdateOptions struct {
 	Enabled     *bool
 	Jitter      *int
 	Timeslots   []TimeslotInput
+}
+
+// WhatsAppTemplate is a WhatsApp message template, which lives on the
+// WhatsApp Business account (the profile).
+type WhatsAppTemplate struct {
+	ID         string  `json:"id"`
+	ExternalID *string `json:"external_id"`
+	ProfileID  string  `json:"profile_id"`
+	Name       string  `json:"name"`
+	Language   string  `json:"language"`
+	Category   string  `json:"category"`
+	Status     string  `json:"status"`
+	// ParameterFormat is "POSITIONAL" or "NAMED".
+	ParameterFormat       *string          `json:"parameter_format"`
+	Components            []map[string]any `json:"components"`
+	MessageSendTTLSeconds *int             `json:"message_send_ttl_seconds,omitempty"`
+	RejectedReason        *string          `json:"rejected_reason,omitempty"`
+	QualityScore          *string          `json:"quality_score,omitempty"`
+	VariableCount         int              `json:"variable_count"`
+	CreatedAt             string           `json:"created_at"`
+	UpdatedAt             string           `json:"updated_at"`
 }

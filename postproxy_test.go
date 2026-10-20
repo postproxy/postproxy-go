@@ -144,6 +144,20 @@ func TestClient_ErrorParsing(t *testing.T) {
 			wantMsg:    "Bad request",
 			checkFn:    IsBadRequestError,
 		},
+		{
+			name:       "403 forbidden",
+			statusCode: 403,
+			body:       `{"error":"Account is past due"}`,
+			wantMsg:    "Account is past due",
+			checkFn:    IsForbiddenError,
+		},
+		{
+			name:       "429 rate limited",
+			statusCode: 429,
+			body:       `{"error":"rate limited"}`,
+			wantMsg:    "rate limited",
+			checkFn:    IsRateLimitError,
+		},
 	}
 
 	for _, tt := range tests {
@@ -229,5 +243,38 @@ func TestIsConflictError(t *testing.T) {
 	}
 	if apiErr, ok := err.(*PostProxyError); !ok || apiErr.Response["duplicate_post_id"] != "post-1" {
 		t.Errorf("expected duplicate_post_id in the response, got %v", err)
+	}
+}
+
+func TestRateLimitErrorRetryAfter(t *testing.T) {
+	tests := []struct {
+		header string
+		want   int
+	}{
+		{"30", 30},
+		{"1.5", 2},
+		{"", 0},
+		{"Wed, 21 Oct 2026 07:28:00 GMT", 0},
+	}
+
+	for _, tt := range tests {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if tt.header != "" {
+				w.Header().Set("Retry-After", tt.header)
+			}
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate limited"}`))
+		}))
+
+		c := NewClient("key", WithBaseURL(srv.URL))
+		_, err := c.Profiles.List(context.Background(), nil)
+		srv.Close()
+
+		if !IsRateLimitError(err) {
+			t.Fatalf("expected a rate limit error, got %v", err)
+		}
+		if got := err.(*PostProxyError).RetryAfter; got != tt.want {
+			t.Errorf("Retry-After %q: expected %d, got %d", tt.header, tt.want, got)
+		}
 	}
 }

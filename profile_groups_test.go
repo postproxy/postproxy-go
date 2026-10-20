@@ -166,3 +166,19 @@ func TestProfileGroupsInitializeConnection(t *testing.T) {
 		t.Errorf("expected URL %q, got %q", "https://auth.postproxy.dev/connect/abc", result.URL)
 	}
 }
+
+func TestProfileGroupsInitializeConnectionOnboarding(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"url": "https://x", "success": true})
+	ctx := context.Background()
+
+	facebook := ConnectionOnboardingFacebook
+	refresh := true
+	_, _ = c.ProfileGroups.InitializeConnection(ctx, "pg_1", PlatformInstagram, "https://app.test/cb", &ConnectionOptions{Onboarding: &facebook, RefreshConnection: &refresh})
+
+	businessApp := ConnectionOnboardingBusinessApp
+	_, _ = c.ProfileGroups.InitializeConnection(ctx, "pg_1", PlatformWhatsApp, "https://app.test/cb", &ConnectionOptions{Onboarding: &businessApp})
+
+	reqs := requests()
+	assertJSON(t, reqs[0].JSON(t), `{"platform":"instagram","redirect_url":"https://app.test/cb","onboarding":"facebook","refresh_connection":true}`)
+	assertJSON(t, reqs[1].JSON(t), `{"platform":"whatsapp","redirect_url":"https://app.test/cb","onboarding":"business_app"}`)
+}

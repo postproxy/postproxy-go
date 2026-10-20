@@ -1,7 +1,7 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.13.0"
+const Version = "1.14.0"
 
 // Platform represents a social media platform.
 type Platform string
@@ -18,6 +18,7 @@ const (
 	PlatformBluesky        Platform = "bluesky"
 	PlatformTelegram       Platform = "telegram"
 	PlatformGoogleBusiness Platform = "google_business"
+	PlatformWhatsApp       Platform = "whatsapp"
 )
 
 // PostStatus represents the status of a post.
@@ -92,6 +93,7 @@ type LinkedInFormat string
 
 const (
 	LinkedInFormatPost LinkedInFormat = "post"
+	LinkedInFormatPoll LinkedInFormat = "poll"
 )
 
 // YouTubeFormat represents the format of a YouTube post.
@@ -183,6 +185,52 @@ const (
 	PostSyncStatusFailed    PostSyncStatus = "failed"
 )
 
+// InstagramTrialStrategy controls how an Instagram trial reel graduates to
+// your followers.
+type InstagramTrialStrategy string
+
+const (
+	InstagramTrialStrategyManual        InstagramTrialStrategy = "MANUAL"
+	InstagramTrialStrategySSPerformance InstagramTrialStrategy = "SS_PERFORMANCE"
+)
+
+// InstagramAudioType filters ProfilesService.InstagramAvailableAudio.
+type InstagramAudioType string
+
+const (
+	InstagramAudioTypeMusic         InstagramAudioType = "music"
+	InstagramAudioTypeOriginalSound InstagramAudioType = "original_sound"
+)
+
+// ConnectionOnboarding picks the connection flow. Facebook and Instagram
+// profiles connect through Facebook login; WhatsApp through the Cloud API or
+// the WhatsApp Business app.
+type ConnectionOnboarding string
+
+const (
+	ConnectionOnboardingInstagram   ConnectionOnboarding = "instagram"
+	ConnectionOnboardingFacebook    ConnectionOnboarding = "facebook"
+	ConnectionOnboardingAPI         ConnectionOnboarding = "api"
+	ConnectionOnboardingBusinessApp ConnectionOnboarding = "business_app"
+)
+
+// DailyStatsAttribution says which day post metrics count toward in
+// ProfilesService.DailyStats.
+type DailyStatsAttribution string
+
+const (
+	DailyStatsAttributionReceived DailyStatsAttribution = "received"
+	DailyStatsAttributionPublish  DailyStatsAttribution = "publish"
+)
+
+// ProfileInactiveReason says why an inactive profile was deactivated.
+type ProfileInactiveReason string
+
+const (
+	// ProfileInactiveReasonNetworkTaken means the same account was connected elsewhere.
+	ProfileInactiveReasonNetworkTaken ProfileInactiveReason = "network_taken"
+)
+
 // MessageDirection represents the direction of a direct message.
 type MessageDirection string
 
@@ -206,27 +254,46 @@ const (
 type WebhookEventType string
 
 const (
-	EventPostProcessed                  WebhookEventType = "post.processed"
-	EventPostImported                   WebhookEventType = "post.imported"
-	EventPlatformPostPublished          WebhookEventType = "platform_post.published"
-	EventPlatformPostFailed             WebhookEventType = "platform_post.failed"
-	EventPlatformPostFailedWaitingRetry WebhookEventType = "platform_post.failed_waiting_for_retry"
-	EventPlatformPostInsights           WebhookEventType = "platform_post.insights"
-	EventProfileConnected               WebhookEventType = "profile.connected"
-	EventProfileDisconnected            WebhookEventType = "profile.disconnected"
-	EventProfileStats                   WebhookEventType = "profile.stats"
-	EventMediaFailed                    WebhookEventType = "media.failed"
-	EventCommentCreated                 WebhookEventType = "comment.created"
-	EventProfileCommentCreated          WebhookEventType = "profile_comment.created"
-	EventMessageReceived                WebhookEventType = "message.received"
-	EventMessageSent                    WebhookEventType = "message.sent"
-	EventMessageDelivered               WebhookEventType = "message.delivered"
-	EventMessageRead                    WebhookEventType = "message.read"
-	EventMessageEdited                  WebhookEventType = "message.edited"
-	EventMessageDeleted                 WebhookEventType = "message.deleted"
-	EventMessageFailedWaitingForRetry   WebhookEventType = "message.failed_waiting_for_retry"
-	EventMessageFailed                  WebhookEventType = "message.failed"
-	EventReactionReceived               WebhookEventType = "reaction.received"
+	EventPostProcessed                       WebhookEventType = "post.processed"
+	EventPostImported                        WebhookEventType = "post.imported"
+	EventPlatformPostPublished               WebhookEventType = "platform_post.published"
+	EventPlatformPostFailed                  WebhookEventType = "platform_post.failed"
+	EventPlatformPostFailedWaitingRetry      WebhookEventType = "platform_post.failed_waiting_for_retry"
+	EventPlatformPostEdited                  WebhookEventType = "platform_post.edited"
+	EventPlatformPostEditFailed              WebhookEventType = "platform_post.edit_failed"
+	EventPlatformPostInsights                WebhookEventType = "platform_post.insights"
+	EventProfileConnected                    WebhookEventType = "profile.connected"
+	EventProfileDisconnected                 WebhookEventType = "profile.disconnected"
+	EventProfileStats                        WebhookEventType = "profile.stats"
+	EventProfilePlacementsSynced             WebhookEventType = "profile.placements_synced"
+	EventPlacementOrphaned                   WebhookEventType = "placement.orphaned"
+	EventPlacementRestored                   WebhookEventType = "placement.restored"
+	EventMediaFailed                         WebhookEventType = "media.failed"
+	EventCommentCreated                      WebhookEventType = "comment.created"
+	EventCommentFailed                       WebhookEventType = "comment.failed"
+	EventCommentFailedWaitingForRetry        WebhookEventType = "comment.failed_waiting_for_retry"
+	EventCommentDeliveryUnconfirmed          WebhookEventType = "comment.delivery_unconfirmed"
+	EventCommentEdited                       WebhookEventType = "comment.edited"
+	EventCommentEditFailed                   WebhookEventType = "comment.edit_failed"
+	EventProfileCommentCreated               WebhookEventType = "profile_comment.created"
+	EventProfileCommentFailed                WebhookEventType = "profile_comment.failed"
+	EventProfileCommentFailedWaitingForRetry WebhookEventType = "profile_comment.failed_waiting_for_retry"
+	EventProfileCommentDeleted               WebhookEventType = "profile_comment.deleted"
+	EventMessageReceived                     WebhookEventType = "message.received"
+	EventMessageSent                         WebhookEventType = "message.sent"
+	EventMessageDelivered                    WebhookEventType = "message.delivered"
+	EventMessageRead                         WebhookEventType = "message.read"
+	EventMessageEdited                       WebhookEventType = "message.edited"
+	EventMessageDeleted                      WebhookEventType = "message.deleted"
+	EventMessageFailedWaitingForRetry        WebhookEventType = "message.failed_waiting_for_retry"
+	EventMessageFailed                       WebhookEventType = "message.failed"
+	EventReactionReceived                    WebhookEventType = "reaction.received"
+	EventReferralReceived                    WebhookEventType = "referral.received"
+	EventMessageTemplateStatusUpdated        WebhookEventType = "message_template.status_updated"
+	EventMessageTemplateCategoryUpdated      WebhookEventType = "message_template.category_updated"
+	EventPlacementNameStatusUpdated          WebhookEventType = "placement.name_status_updated"
+	EventPlacementQualityUpdated             WebhookEventType = "placement.quality_updated"
+	EventWhatsAppAutomaticEvent              WebhookEventType = "whatsapp.automatic_event"
 )
 
 // WebhookEventTypes is the set of all known webhook event types.
@@ -236,13 +303,26 @@ var WebhookEventTypes = []WebhookEventType{
 	EventPlatformPostPublished,
 	EventPlatformPostFailed,
 	EventPlatformPostFailedWaitingRetry,
+	EventPlatformPostEdited,
+	EventPlatformPostEditFailed,
 	EventPlatformPostInsights,
 	EventProfileConnected,
 	EventProfileDisconnected,
 	EventProfileStats,
+	EventProfilePlacementsSynced,
+	EventPlacementOrphaned,
+	EventPlacementRestored,
 	EventMediaFailed,
 	EventCommentCreated,
+	EventCommentFailed,
+	EventCommentFailedWaitingForRetry,
+	EventCommentDeliveryUnconfirmed,
+	EventCommentEdited,
+	EventCommentEditFailed,
 	EventProfileCommentCreated,
+	EventProfileCommentFailed,
+	EventProfileCommentFailedWaitingForRetry,
+	EventProfileCommentDeleted,
 	EventMessageReceived,
 	EventMessageSent,
 	EventMessageDelivered,
@@ -252,4 +332,10 @@ var WebhookEventTypes = []WebhookEventType{
 	EventMessageFailedWaitingForRetry,
 	EventMessageFailed,
 	EventReactionReceived,
+	EventReferralReceived,
+	EventMessageTemplateStatusUpdated,
+	EventMessageTemplateCategoryUpdated,
+	EventPlacementNameStatusUpdated,
+	EventPlacementQualityUpdated,
+	EventWhatsAppAutomaticEvent,
 }

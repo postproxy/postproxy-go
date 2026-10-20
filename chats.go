@@ -59,6 +59,9 @@ func (s *ChatsService) Create(ctx context.Context, profileID, participantExterna
 		if opts.ParticipantName != nil {
 			body["participant_name"] = *opts.ParticipantName
 		}
+		if opts.PlacementID != nil {
+			body["placement_id"] = *opts.PlacementID
+		}
 		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
 	}
 	reqOpts = append(reqOpts, withJSON(body))
@@ -96,21 +99,54 @@ func (s *ChatsService) Get(ctx context.Context, chatID string, opts *RequestOpti
 
 // Archive archives a chat (Bluesky only).
 func (s *ChatsService) Archive(ctx context.Context, chatID string, opts *RequestOptions) (*Chat, error) {
-	return s.archiveAction(ctx, http.MethodPost, chatID, opts)
+	return s.chatAction(ctx, http.MethodPost, chatID, "archive", opts)
 }
 
 // Unarchive unarchives a chat (Bluesky only).
 func (s *ChatsService) Unarchive(ctx context.Context, chatID string, opts *RequestOptions) (*Chat, error) {
-	return s.archiveAction(ctx, http.MethodDelete, chatID, opts)
+	return s.chatAction(ctx, http.MethodDelete, chatID, "archive", opts)
 }
 
-func (s *ChatsService) archiveAction(ctx context.Context, method, chatID string, opts *RequestOptions) (*Chat, error) {
+// MarkRead marks the latest inbound message as read (shows the read receipt).
+func (s *ChatsService) MarkRead(ctx context.Context, chatID string, opts *RequestOptions) (*Chat, error) {
+	return s.chatAction(ctx, http.MethodPost, chatID, "mark_read", opts)
+}
+
+// StartTyping shows the typing indicator. Facebook, Instagram and WhatsApp only.
+func (s *ChatsService) StartTyping(ctx context.Context, chatID string, opts *RequestOptions) (*AcceptedResponse, error) {
+	return s.typingAction(ctx, chatID, "start_typing", opts)
+}
+
+// StopTyping hides the typing indicator. Facebook, Instagram and WhatsApp only.
+func (s *ChatsService) StopTyping(ctx context.Context, chatID string, opts *RequestOptions) (*AcceptedResponse, error) {
+	return s.typingAction(ctx, chatID, "stop_typing", opts)
+}
+
+func (s *ChatsService) typingAction(ctx context.Context, chatID, action string, opts *RequestOptions) (*AcceptedResponse, error) {
 	var reqOpts []requestOption
 	if opts != nil {
 		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
 	}
 
-	data, err := s.client.request(ctx, method, "/chats/"+chatID+"/archive", reqOpts...)
+	data, err := s.client.request(ctx, http.MethodPost, "/chats/"+chatID+"/"+action, reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result AcceptedResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (s *ChatsService) chatAction(ctx context.Context, method, chatID, action string, opts *RequestOptions) (*Chat, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, method, "/chats/"+chatID+"/"+action, reqOpts...)
 	if err != nil {
 		return nil, err
 	}

@@ -753,3 +753,244 @@ func TestPostsGet_WithMediaAndThread(t *testing.T) {
 		t.Errorf("expected thread body 'Reply', got %q", post.Thread[0].Body)
 	}
 }
+
+func TestPostsCreate_NewPlatformParams(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "p"})
+
+	reel := InstagramFormatReel
+	poll := LinkedInFormatPoll
+	video := TikTokFormatVideo
+	trial := InstagramTrialStrategyManual
+	_, err := c.Posts.Create(context.Background(), "hi", []string{"prof_1"}, &PostCreateOptions{
+		Platforms: &PlatformParams{
+			Facebook: &FacebookParams{Link: ptr("https://acme.test"), Countries: []string{"US", "CA"}},
+			Instagram: &InstagramParams{
+				Format: &reel, AudioID: ptr("123"), AudioVolume: ptr(40), VideoVolume: ptr(80),
+				TrialStrategy: &trial, MadeWithAI: ptr(true),
+			},
+			LinkedIn: &LinkedInParams{
+				Format: &poll, OrganizationID: ptr("1"), PollQuestion: ptr("Tabs or spaces?"),
+				PollOptions: []string{"Tabs", "Spaces"}, PollDurationDays: ptr(3),
+			},
+			Threads: &ThreadsParams{TopicTag: ptr("Coffee"), AltText: AltText{"A cup"}},
+			TikTok:  &TikTokParams{Format: &video, UploadAsDraft: ptr(true), CoverURL: ptr("https://a.test/c.jpg")},
+			Twitter: &TwitterParams{AltText: AltText{"one", "two"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	payload := requests()[0].JSON(t).(map[string]any)
+	assertJSON(t, payload["platforms"], `{
+		"facebook": {"link":"https://acme.test","countries":["US","CA"]},
+		"instagram": {"format":"reel","audio_id":"123","audio_volume":40,"video_volume":80,"trial_strategy":"MANUAL","made_with_ai":true},
+		"linkedin": {"format":"poll","organization_id":"1","poll_question":"Tabs or spaces?","poll_options":["Tabs","Spaces"],"poll_duration_days":3},
+		"threads": {"topic_tag":"Coffee","alt_text":"A cup"},
+		"tiktok": {"format":"video","upload_as_draft":true,"cover_url":"https://a.test/c.jpg"},
+		"twitter": {"alt_text":["one","two"]}
+	}`)
+}
+
+func TestPostsCreate_SkipDuplicateCheck(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "p"})
+	ctx := context.Background()
+
+	_, _ = c.Posts.Create(ctx, "hello", []string{"profile-1"}, &PostCreateOptions{SkipDuplicateCheck: true})
+	_, _ = c.Posts.Create(ctx, "hello", []string{"profile-1"}, nil)
+
+	reqs := requests()
+	if got := reqs[0].Header.Get("X-Skip-Duplicate-Check"); got != "true" {
+		t.Errorf("expected X-Skip-Duplicate-Check: true, got %q", got)
+	}
+	if _, ok := reqs[1].Header["X-Skip-Duplicate-Check"]; ok {
+		t.Error("expected no X-Skip-Duplicate-Check header")
+	}
+}
+
+func writeCoverFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "cover.jpg")
+	if err := os.WriteFile(path, []byte("fake cover"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestPostsCreate_LocalCoverFileUsesMultipart(t *testing.T) {
+	coverPath := writeCoverFile(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			t.Errorf("expected multipart/form-data, got %s", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		files := r.MultipartForm.File["platforms[tiktok][cover_file]"]
+		if len(files) != 1 || files[0].Filename != "cover.jpg" {
+			t.Fatalf("expected cover.jpg upload, got %v", files)
+		}
+		if files[0].Header.Get("Content-Type") != "image/jpeg" {
+			t.Errorf("expected image/jpeg, got %s", files[0].Header.Get("Content-Type"))
+		}
+		if r.FormValue("platforms[tiktok][format]") != "video" {
+			t.Errorf("expected format video, got %q", r.FormValue("platforms[tiktok][format]"))
+		}
+		if media := r.MultipartForm.Value["media[]"]; len(media) != 1 || media[0] != "https://a.test/clip.mp4" {
+			t.Errorf("unexpected media: %v", media)
+		}
+		_, _ = w.Write([]byte(`{"id":"p"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	video := TikTokFormatVideo
+	_, err := c.Posts.Create(context.Background(), "New video", []string{"tt-profile"}, &PostCreateOptions{
+		Media:     []string{"https://a.test/clip.mp4"},
+		Platforms: &PlatformParams{TikTok: &TikTokParams{Format: &video, CoverFile: &coverPath}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPostsUpdate_LocalCoverFileUsesMultipart(t *testing.T) {
+	coverPath := writeCoverFile(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		if len(r.MultipartForm.File["platforms[youtube][cover_file]"]) != 1 {
+			t.Errorf("expected youtube cover_file upload, got %v", r.MultipartForm.File)
+		}
+		_, _ = w.Write([]byte(`{"id":"post-1"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Posts.Update(context.Background(), "post-1", &PostUpdateOptions{
+		Platforms: &PlatformParams{YouTube: &YouTubeParams{CoverFile: &coverPath}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPostsCreate_DataURLCoverFileStaysJSON(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "p"})
+
+	dataURL := "data:image/png;base64,iVBORw0KGgo="
+	_, err := c.Posts.Create(context.Background(), "Pin", []string{"pin-profile"}, &PostCreateOptions{
+		Media:     []string{"https://a.test/v.mp4"},
+		Platforms: &PlatformParams{Pinterest: &PinterestParams{BoardID: ptr("b1"), CoverFile: &dataURL}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := requests()[0]
+	if ct := req.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected application/json, got %s", ct)
+	}
+	payload := req.JSON(t).(map[string]any)
+	assertJSON(t, payload["platforms"], `{"pinterest":{"board_id":"b1","cover_file":"data:image/png;base64,iVBORw0KGgo="}}`)
+}
+
+func TestPostsCreate_AltTextInMultipart(t *testing.T) {
+	tmpFile := writeCoverFile(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		if got := r.FormValue("platforms[pinterest][alt_text]"); got != "A fox" {
+			t.Errorf("expected single alt_text string, got %q", got)
+		}
+		if got := r.MultipartForm.Value["platforms[bluesky][alt_text][]"]; len(got) != 2 {
+			t.Errorf("expected 2 alt_text entries, got %v", got)
+		}
+		_, _ = w.Write([]byte(`{"id":"p"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Posts.Create(context.Background(), "Fox", []string{"prof-1"}, &PostCreateOptions{
+		MediaFiles: []string{tmpFile},
+		Platforms: &PlatformParams{
+			Pinterest: &PinterestParams{AltText: AltText{"A fox"}},
+			Bluesky:   &BlueskyParams{AltText: AltText{"A fox", "Another fox"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPostsGet_NewResponseFields(t *testing.T) {
+	c, _ := newRecordingClient(t, map[string]any{
+		"id": "p1", "body": "hi", "status": "processed", "created_at": "2026-09-01T00:00:00Z",
+		"draft": false, "source": "imported",
+		"platforms": []any{map[string]any{
+			"platform": "tiktok", "profile_id": "prof_1", "profile_name": "Acme", "status": "published",
+			"permalink":   "https://tiktok.com/@acme/video/1",
+			"attachments": []any{map[string]any{"id": "a1", "type": "cover", "status": "processed", "content_type": "image/jpeg", "url": "https://cdn.test/c.jpg"}},
+		}},
+		"thread": []any{map[string]any{
+			"id": "t1", "body": "second", "media": []any{},
+			"platforms": []any{map[string]any{"platform": "twitter", "profile_id": "prof_2", "profile_name": "X", "status": "published"}},
+		}},
+	})
+
+	post, err := c.Posts.Get(context.Background(), "p1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if post.Source == nil || *post.Source != "imported" || post.Draft == nil || *post.Draft {
+		t.Errorf("unexpected draft/source: %v %v", post.Draft, post.Source)
+	}
+	pr := post.Platforms[0]
+	if pr.ProfileID != "prof_1" || pr.ProfileName != "Acme" || pr.Permalink == nil {
+		t.Errorf("unexpected platform result: %+v", pr)
+	}
+	if len(pr.Attachments) != 1 || pr.Attachments[0].Type != "cover" {
+		t.Errorf("unexpected attachments: %+v", pr.Attachments)
+	}
+	if len(post.Thread[0].Platforms) != 1 || post.Thread[0].Platforms[0].Status != PlatformPostStatusPublished {
+		t.Errorf("unexpected thread platforms: %+v", post.Thread[0].Platforms)
+	}
+}
+
+func TestPostsCreate_MultipartTelegramAndGoogleBusinessParams(t *testing.T) {
+	tmpFile := writeCoverFile(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		if got := r.FormValue("platforms[telegram][chat_id]"); got != "-100123" {
+			t.Errorf("expected telegram chat_id, got %q", got)
+		}
+		if got := r.FormValue("platforms[google_business][format]"); got != "standard" {
+			t.Errorf("expected google_business format, got %q", got)
+		}
+		_, _ = w.Write([]byte(`{"id":"p"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", WithBaseURL(srv.URL))
+	_, err := c.Posts.Create(context.Background(), "Hi", []string{"prof-1"}, &PostCreateOptions{
+		MediaFiles: []string{tmpFile},
+		Platforms: &PlatformParams{
+			Telegram:       &TelegramParams{ChatID: "-100123"},
+			GoogleBusiness: map[string]any{"format": "standard"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

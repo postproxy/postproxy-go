@@ -239,3 +239,153 @@ func TestParseWebhookEvent_InvalidJSON(t *testing.T) {
 		t.Error("expected error on invalid JSON")
 	}
 }
+
+func TestParseWebhookEvent_EventsAddedIn114(t *testing.T) {
+	types := []WebhookEventType{
+		EventPlatformPostEdited,
+		EventPlatformPostEditFailed,
+		EventProfilePlacementsSynced,
+		EventPlacementOrphaned,
+		EventPlacementRestored,
+		EventCommentFailed,
+		EventCommentFailedWaitingForRetry,
+		EventCommentDeliveryUnconfirmed,
+		EventCommentEdited,
+		EventCommentEditFailed,
+		EventProfileCommentFailed,
+		EventProfileCommentFailedWaitingForRetry,
+		EventProfileCommentDeleted,
+		EventReferralReceived,
+		EventMessageTemplateStatusUpdated,
+		EventMessageTemplateCategoryUpdated,
+		EventPlacementNameStatusUpdated,
+		EventPlacementQualityUpdated,
+		EventWhatsAppAutomaticEvent,
+	}
+	if len(WebhookEventTypes) != 40 {
+		t.Errorf("expected 40 webhook event types, got %d", len(WebhookEventTypes))
+	}
+	for _, eventType := range types {
+		event, err := ParseWebhookEvent(envelope(t, string(eventType), map[string]any{"id": "x"}))
+		if err != nil {
+			t.Errorf("type %s: %v", eventType, err)
+			continue
+		}
+		if event.Type != eventType {
+			t.Errorf("expected %q, got %q", eventType, event.Type)
+		}
+	}
+}
+
+func TestParseWebhookEvent_MessageTemplateStatusUpdated(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "message_template.status_updated", map[string]any{
+		"id": "tpl_1", "external_id": "998877", "profile_id": "prof_wa", "platform": "whatsapp",
+		"name": "order_update", "language": "en_US", "category": "UTILITY", "status": "APPROVED",
+		"rejected_reason": nil, "quality_score": nil,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsMessageTemplate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Status != "APPROVED" || data.Platform != PlatformWhatsApp {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_PlacementsSynced(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "profile.placements_synced", map[string]any{
+		"id": "prof_1", "name": "Acme", "platform": "facebook", "profile_group_id": "pg_1",
+		"status": "active", "uid": "u1", "platform_id": "fb_1", "username": nil,
+		"placements_sync_status": "synced",
+		"placements": []any{map[string]any{
+			"id": "page_1", "name": "Acme Page", "platform": "facebook", "profile_group_id": "pg_1",
+			"profile_id": "prof_1", "profile_name": "Acme", "metadata": map[string]any{},
+		}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsPlacementsSynced()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.PlatformID != "fb_1" || len(data.Placements) != 1 || data.Placements[0].ID != "page_1" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_PlacementQualityUpdated(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "placement.quality_updated", map[string]any{
+		"id": "pn_1", "name": "+1 555", "platform": "whatsapp", "profile_group_id": nil,
+		"profile_id": "prof_wa", "profile_name": "Acme", "metadata": map[string]any{},
+		"event": "UPGRADE", "current_limit": "TIER_10K", "old_limit": "TIER_1K",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsPlacement()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Event == nil || *data.Event != "UPGRADE" || data.CurrentLimit != "TIER_10K" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_ReferralReceived(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "referral.received", map[string]any{
+		"chat": map[string]any{
+			"id": "chat_1", "profile_id": "prof_wa", "platform": "whatsapp", "external_placement_id": "pn_1",
+			"group": false, "participant_external_id": "15551234567",
+		},
+		"source": "ad", "ctwa_clid": "clid_1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsReferral()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Chat.ID != "chat_1" || data.CtwaClid == nil || *data.CtwaClid != "clid_1" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_WhatsAppAutomaticEvent(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "whatsapp.automatic_event", map[string]any{
+		"profile_id": "prof_wa", "chat_id": "chat_1", "event_name": "Purchase",
+		"custom_data": map[string]any{"currency": "USD", "value": 10},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsWhatsAppAutomaticEvent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.EventName == nil || *data.EventName != "Purchase" || data.CustomData["currency"] != "USD" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_CommentEditFailed(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "comment.edit_failed", map[string]any{
+		"id": "c1", "post_id": "p1", "platform": "facebook", "body": "hi", "status": "published",
+		"profile_id": "prof_1", "error": "Permission denied",
+		"error_details": map[string]any{"platform_error_code": "200"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsCommentCreated()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Error == nil || *data.Error != "Permission denied" || data.ErrorDetails == nil {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}

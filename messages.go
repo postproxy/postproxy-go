@@ -110,6 +110,33 @@ func (s *MessagesService) buildJSON(opts *MessageSendOptions) requestOption {
 	if opts.Card != nil {
 		payload["card"] = opts.Card
 	}
+	if opts.Elements != nil {
+		payload["elements"] = opts.Elements
+	}
+	if opts.Template != nil {
+		payload["template"] = opts.Template
+	}
+	if opts.Interactive != nil {
+		payload["interactive"] = opts.Interactive
+	}
+	if opts.Location != nil {
+		payload["location"] = opts.Location
+	}
+	if opts.Contacts != nil {
+		payload["contacts"] = opts.Contacts
+	}
+	if opts.Category != nil {
+		payload["category"] = *opts.Category
+	}
+	if opts.LinkPreview != nil {
+		payload["link_preview"] = *opts.LinkPreview
+	}
+	if opts.VoiceNote != nil {
+		payload["voice_note"] = *opts.VoiceNote
+	}
+	if opts.Filename != nil {
+		payload["filename"] = *opts.Filename
+	}
 	return withJSON(payload)
 }
 
@@ -125,6 +152,12 @@ func (s *MessagesService) buildFormData(opts *MessageSendOptions) ([]requestOpti
 	}
 	if opts.ReplyToExternalID != nil {
 		_ = w.WriteField("reply_to_external_id", *opts.ReplyToExternalID)
+	}
+	if opts.VoiceNote != nil {
+		_ = w.WriteField("voice_note", strconv.FormatBool(*opts.VoiceNote))
+	}
+	if opts.Filename != nil {
+		_ = w.WriteField("filename", *opts.Filename)
 	}
 
 	for _, u := range opts.Media {

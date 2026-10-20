@@ -460,3 +460,102 @@ func TestMessagesUnreact(t *testing.T) {
 		t.Errorf("expected id msg_111, got %s", msg.ID)
 	}
 }
+
+func TestMessagesSendCarousel(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "msg_1"})
+
+	_, err := c.Messages.Send(context.Background(), "chat_1", &MessageSendOptions{
+		Elements: []MessageElement{
+			{Title: "Red", ImageURL: "https://img.test/r.jpg"},
+			{Title: "Blue", Subtitle: "Restocked", Buttons: []MessageButton{{Type: "postback", Title: "Pick", Payload: "BLUE"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertJSON(t, requests()[0].JSON(t), `{"elements":[
+		{"title":"Red","image_url":"https://img.test/r.jpg"},
+		{"title":"Blue","subtitle":"Restocked","buttons":[{"type":"postback","title":"Pick","payload":"BLUE"}]}
+	]}`)
+}
+
+func TestMessagesSendWhatsAppTemplate(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "msg_1"})
+
+	_, err := c.Messages.Send(context.Background(), "chat_1", &MessageSendOptions{
+		Template: &MessageTemplateInput{
+			Name:         "order_update",
+			Language:     "en_US",
+			Variables:    []string{"#1234"},
+			ButtonParams: []TemplateButtonParam{{Index: 0, SubType: "url", Extra: map[string]any{"text": "1234"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertJSON(t, requests()[0].JSON(t), `{"template":{
+		"name":"order_update","language":"en_US","variables":["#1234"],
+		"button_params":[{"index":0,"sub_type":"url","text":"1234"}]
+	}}`)
+}
+
+func TestMessagesSendWhatsAppPayloads(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "msg_1"})
+	ctx := context.Background()
+
+	body := "Your code is 1234"
+	category := "utility"
+	linkPreview := false
+	filename := "invoice.pdf"
+	voiceNote := true
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Location: &MessageLocation{Latitude: 52.5, Longitude: 13.4, Name: "Store"}})
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Contacts: []map[string]any{{"name": map[string]any{"formatted_name": "Jane"}}}})
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Body: &body, Category: &category, LinkPreview: &linkPreview})
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Media: []string{"https://files.test/a.pdf"}, Filename: &filename})
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Media: []string{"https://files.test/a.ogg"}, VoiceNote: &voiceNote})
+	_, _ = c.Messages.Send(ctx, "chat_1", &MessageSendOptions{Interactive: map[string]any{"type": "button", "body": map[string]any{"text": "Pick"}}})
+
+	reqs := requests()
+	assertJSON(t, reqs[0].JSON(t), `{"location":{"latitude":52.5,"longitude":13.4,"name":"Store"}}`)
+	assertJSON(t, reqs[1].JSON(t), `{"contacts":[{"name":{"formatted_name":"Jane"}}]}`)
+	assertJSON(t, reqs[2].JSON(t), `{"body":"Your code is 1234","category":"utility","link_preview":false}`)
+	assertJSON(t, reqs[3].JSON(t), `{"media":["https://files.test/a.pdf"],"filename":"invoice.pdf"}`)
+	assertJSON(t, reqs[4].JSON(t), `{"media":["https://files.test/a.ogg"],"voice_note":true}`)
+	assertJSON(t, reqs[5].JSON(t), `{"interactive":{"type":"button","body":{"text":"Pick"}}}`)
+}
+
+func TestMessagesWhatsAppResponseFields(t *testing.T) {
+	c, _ := newRecordingClient(t, map[string]any{
+		"id": "msg_1", "chat_id": "chat_1", "direction": "outbound", "status": "published",
+		"elements":      []any{map[string]any{"title": "Red"}},
+		"story_reply":   map[string]any{"story_id": "s1"},
+		"location":      map[string]any{"latitude": 52.5, "longitude": 13.4},
+		"contacts":      []any{map[string]any{"name": map[string]any{"formatted_name": "Jane"}}},
+		"template":      map[string]any{"id": "tpl_1", "external_id": "998877", "name": "order_update", "language": "en_US", "variables": []any{"#1"}},
+		"error_details": map[string]any{"platform_error_code": "131047"},
+		"reactions":     []any{}, "attachments": []any{}, "created_at": "2026-09-01T00:00:00Z",
+	})
+
+	msg, err := c.Messages.Get(context.Background(), "msg_1", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(msg.Elements) != 1 || msg.Elements[0].Title != "Red" {
+		t.Errorf("unexpected elements: %+v", msg.Elements)
+	}
+	if msg.StoryReply["story_id"] != "s1" {
+		t.Errorf("unexpected story_reply: %v", msg.StoryReply)
+	}
+	if msg.Location == nil || msg.Location.Latitude != 52.5 {
+		t.Errorf("unexpected location: %+v", msg.Location)
+	}
+	if len(msg.Contacts) != 1 {
+		t.Errorf("unexpected contacts: %v", msg.Contacts)
+	}
+	if msg.Template == nil || msg.Template.Name != "order_update" {
+		t.Errorf("unexpected template: %+v", msg.Template)
+	}
+	if msg.ErrorDetails == nil || msg.ErrorDetails.PlatformErrorCode == nil || *msg.ErrorDetails.PlatformErrorCode != "131047" {
+		t.Errorf("unexpected error_details: %+v", msg.ErrorDetails)
+	}
+}

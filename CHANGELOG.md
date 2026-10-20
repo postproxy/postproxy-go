@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.0] - 2026-10-20
+
+### Added
+
+- **WhatsApp.** `PlatformWhatsApp` joins `Platform`. DMs: `ChatCreateOptions.PlacementID` (the phone number id, required for WhatsApp), and `MessageSendOptions` gains `Template` (`MessageTemplateInput`: `ID` or `Name` + `Language`, `Variables`, `ButtonParams`, `HeaderMedia`, `HeaderLocation`), `Interactive`, `Location` (`MessageLocation`), `Contacts`, plus `Category`, `LinkPreview`, `VoiceNote` and `Filename`. `Chat` gains `ExternalPlacementID`, `Group` and `WithinMessagingWindow`; `Message` gains `Template` (`MessageTemplateRef`), `Interactive`, `Location`, `Contacts` and `ErrorDetails`.
+- **`client.WhatsAppTemplates`** — `List`, `Get`, `Create`, `Update`, `Delete`, `Library` for message templates (`WhatsAppTemplate`, `WhatsAppTemplateInput`, `WhatsAppTemplateUpdate`). Template ids and names are URL-escaped.
+- **`client.WhatsApp`** — number administration: `NumberInfo`, `RegisterPhoneNumber`, `RequestVerificationCode`, `VerifyPhoneNumber`, `BusinessProfile`, `UpdateBusinessProfile`, `UpdateBusinessProfilePhoto`, `DisplayName`, `RequestDisplayNameChange`, `Username`, `SetUsername`, `DeleteUsername`, `UsernameSuggestions`, blocked users (`BlockedUsers`, `BlockedUserStatus`, `BlockUsers`, `UnblockUsers`), groups (`Groups`, `CreateGroup`, `Group`, `UpdateGroup`, `DeleteGroup`, `AddGroupParticipants`, `RemoveGroupParticipants`, `CreateGroupInviteLink`, `GroupJoinRequests`, `ApproveGroupJoinRequests`, `RejectGroupJoinRequests`), conversions (`Dataset`, `CreateDataset`, `SendConversionEvent`) and `Media`, which returns the raw bytes and content type (`WhatsAppMedia`).
+- **`client.GoogleBusiness`** — manage a Google Business location's own data: `Location`, `UpdateLocation`, `AvailableLocationCategories`, `UpdateHours`, `Attributes`, `AvailableAttributes`, `UpdateAttributes`, `ServiceList`, `UpdateServiceList`, `FoodMenus`, `UpdateFoodMenus`, `PlaceActionLinks`, `AvailablePlaceActionTypes`, `CreatePlaceActionLink`, `UpdatePlaceActionLink`, `DeletePlaceActionLink`, `Media`, `CreateMedia`, `DeleteMedia`. Google's payloads pass through as `map[string]any`.
+- **`client.Placements`** (`List`, `SetActiveProfile`, typed as `AccountPlacement`) and **`client.APIKeys`** (`List`, `Create`, `Delete`, typed as `APIKey`) — account-wide keys only.
+- **Profiles:** `AssignToGroup`, `DailyStats` (`DailyStatsOptions.Attribution`, `DailyStatsResponse`), `FollowerHistory`, `ParticipantStatus` (Instagram), `ResolveMention` (LinkedIn), `InstagramAvailableAudio`, `FacebookPage` / `UpdateFacebookPage`, and chat backfill — `BackfillChats`, `ChatSyncs`, `ChatSync` (`ChatSync`, `ChatSyncListOptions`). `Profile` gains `Username`, `PlatformID`, `PlatformURL`, `AvatarURL`, `InactiveReason` and `PlacementsSyncStatus`; `Placement` gains `AvatarURL`; `PostSync` gains `PlacementID`.
+- **Comments:** `Edit` (Facebook, YouTube), `Pin` / `Unpin` (TikTok), `PrivateReply` takes optional `PrivateReplyOptions` (`QuickReplies`, `Buttons`, `Card`, `Elements`), and `BulkCommentListOptions.PlacementID`. `Comment` and `BulkComment` gain `ExternalEditedAt`.
+- **Chats:** `MarkRead`, `StartTyping`, `StopTyping`.
+- **Carousels:** `MessageSendOptions.Elements` with the new `MessageElement` type (up to 10 cards, Facebook and Instagram). `Message.Elements` and `Message.StoryReply`.
+- **Post params:** `AltText` (new `AltText` type — one entry per media item; a single entry is sent as a plain string) on Facebook, Instagram, LinkedIn, Bluesky, Threads, Pinterest and Twitter; `MadeWithAI` on Instagram and Facebook; Facebook `Link` and `Countries`; LinkedIn `LinkedInFormatPoll` with `PollQuestion` / `PollOptions` / `PollDurationDays`, plus `Countries` and `ReshareURN`; Threads `TopicTag`; TikTok `UploadAsDraft`, `CoverURL`, `ThumbOffset`; Instagram `AudioID`, `AudioVolume`, `VideoVolume`, `StripAudio`.
+- **`CoverFile`** on Instagram, TikTok, YouTube and Pinterest params: a local path is uploaded with the post as `platforms[<platform>][cover_file]` (the request switches to multipart even without `MediaFiles`); a base64 `data:` URL is sent as-is. Works on `Posts.Create` and `Posts.Update`.
+- `PostCreateOptions.SkipDuplicateCheck` sends `X-Skip-Duplicate-Check: true`.
+- `PlatformResult` gains `ProfileID`, `ProfileName`, `Permalink` and `Attachments` (`PlatformAttachment`); `ThreadChild` gains `Platforms`, so you can see whether each item in a thread went out. `Post` gains `Draft` and `Source`.
+- `ProfileGroups.InitializeConnection` takes optional `ConnectionOptions` — `Onboarding` (`ConnectionOnboardingInstagram` / `ConnectionOnboardingFacebook` for Instagram, `ConnectionOnboardingAPI` / `ConnectionOnboardingBusinessApp` for WhatsApp) and `RefreshConnection`.
+- New constants: `InstagramTrialStrategy`, `InstagramAudioType`, `ConnectionOnboarding`, `DailyStatsAttribution`, `ProfileInactiveReason`.
+- **Webhooks:** `platform_post.edited`, `platform_post.edit_failed`, `profile.placements_synced`, `placement.orphaned`, `placement.restored`, `comment.delivery_unconfirmed`, `comment.edited`, `comment.edit_failed`, `profile_comment.deleted`, `message_template.status_updated`, `message_template.category_updated`, `placement.name_status_updated`, `placement.quality_updated` and `whatsapp.automatic_event`, plus the previously missing `comment.failed`, `comment.failed_waiting_for_retry`, `profile_comment.failed`, `profile_comment.failed_waiting_for_retry` and `referral.received`. `ParseWebhookEvent` returned `ErrUnknownWebhookEvent` for these before. New decoders `AsPlacementsSynced`, `AsPlacement`, `AsReferral`, `AsMessageTemplate` and `AsWhatsAppAutomaticEvent`; `ProfileEventData` gains `PlatformID` and `Origin`, `CommentCreatedData` gains `ProfileID`, `Error`, `ErrorDetails` and `ExternalEditedAt`, `ProfileCommentCreatedData` gains `Error`, `ErrorDetails` and `Permalink`.
+- `IsForbiddenError` (403 — account canceled or past due, or the platform refused) and `IsRateLimitError` (429), with `PostProxyError.RetryAfter` holding the `Retry-After` seconds.
+- Examples: `examples/google-business`, `examples/whatsapp-templates`, `examples/whatsapp-groups`, `examples/dm-carousel`, `examples/edit-published-post`; a `CoverFile` post in `examples/create-post` and onboarding options in `examples/initialize-connection`.
+
+### Changed
+
+- `InstagramParams.TrialStrategy` is now `*InstagramTrialStrategy` (`"MANUAL"` / `"SS_PERFORMANCE"`); it was `*bool`, which the API never accepted.
+- `Posts.Update` on a **published** post now edits it on the platforms: only `Body`, `Platforms.YouTube.Title`, `Platforms.Pinterest.Title` and `Platforms.Pinterest.DestinationLink` may change.
+- `Comments.PrivateReply` and `ProfileGroups.InitializeConnection` take their new options as a trailing variadic argument, so existing calls compile unchanged.
+- Multipart requests now also send non-pointer platform params such as `TelegramParams.ChatID`, which were dropped before, and `PlatformParams.GoogleBusiness`, which used to panic.
+
 ## [1.13.0] - 2026-08-17
 
 ### Added
