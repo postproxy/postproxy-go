@@ -262,8 +262,8 @@ func TestParseWebhookEvent_EventsAddedIn114(t *testing.T) {
 		EventPlacementQualityUpdated,
 		EventWhatsAppAutomaticEvent,
 	}
-	if len(WebhookEventTypes) != 40 {
-		t.Errorf("expected 40 webhook event types, got %d", len(WebhookEventTypes))
+	if len(WebhookEventTypes) != 43 {
+		t.Errorf("expected 43 webhook event types, got %d", len(WebhookEventTypes))
 	}
 	for _, eventType := range types {
 		event, err := ParseWebhookEvent(envelope(t, string(eventType), map[string]any{"id": "x"}))
@@ -386,6 +386,84 @@ func TestParseWebhookEvent_CommentEditFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if data.Error == nil || *data.Error != "Permission denied" || data.ErrorDetails == nil {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_EventsAddedIn115(t *testing.T) {
+	types := []WebhookEventType{
+		EventProfileCommentEdited,
+		EventChatThreadControlChanged,
+		EventChatThreadControlRequested,
+	}
+	for _, eventType := range types {
+		event, err := ParseWebhookEvent(envelope(t, string(eventType), map[string]any{"id": "x"}))
+		if err != nil {
+			t.Errorf("type %s: %v", eventType, err)
+			continue
+		}
+		if event.Type != eventType {
+			t.Errorf("expected %q, got %q", eventType, event.Type)
+		}
+	}
+}
+
+var threadControlChat = map[string]any{
+	"id": "chat_1", "profile_id": "prof_fb", "platform": "facebook", "external_placement_id": "page_1",
+	"group": false, "participant_external_id": "psid_1",
+}
+
+func TestParseWebhookEvent_ThreadControlChanged(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "chat.thread_control_changed", map[string]any{
+		"chat": threadControlChat, "previous_owner_app_id": nil, "new_owner_app_id": "263902037430900",
+		"metadata": "escalated", "occurred_at": "2026-10-28T12:00:00Z",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsThreadControlChanged()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Chat.ID != "chat_1" || data.PreviousOwnerAppID != nil ||
+		data.NewOwnerAppID == nil || *data.NewOwnerAppID != "263902037430900" ||
+		data.Metadata == nil || *data.Metadata != "escalated" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_ThreadControlRequested(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "chat.thread_control_requested", map[string]any{
+		"chat": threadControlChat, "requested_owner_app_id": "1217981644879628", "metadata": nil,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsThreadControlRequested()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Chat.Platform != PlatformFacebook || data.RequestedOwnerAppID == nil || *data.RequestedOwnerAppID != "1217981644879628" {
+		t.Errorf("unexpected data: %+v", data)
+	}
+}
+
+func TestParseWebhookEvent_ProfileDisconnectedError(t *testing.T) {
+	event, err := ParseWebhookEvent(envelope(t, "profile.disconnected", map[string]any{
+		"id": "prof_1", "name": "Acme", "platform": "twitter", "profile_group_id": "pg_1",
+		"status": "inactive", "uid": "u1", "platform_id": "tw_1", "username": "acme",
+		"origin": "automated", "error": "Twitter access revoked",
+		"error_details": map[string]any{"platform_error_code": "89", "postproxy_note": "Reconnect"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := event.AsProfileEvent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Error == nil || *data.Error != "Twitter access revoked" ||
+		data.ErrorDetails == nil || *data.ErrorDetails.PlatformErrorCode != "89" {
 		t.Errorf("unexpected data: %+v", data)
 	}
 }

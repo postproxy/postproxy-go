@@ -419,3 +419,59 @@ func (s *GoogleBusinessService) remove(ctx context.Context, profileID, action st
 	}
 	return decodeMap(data)
 }
+
+// --- Search keywords ---
+
+// GoogleBusinessSearchKeywordsOptions contains options for
+// GoogleBusinessService.SearchKeywords. Months are "YYYY-MM"; the range is at
+// most 12 months.
+type GoogleBusinessSearchKeywordsOptions struct {
+	FromMonth      *string
+	ToMonth        *string
+	ProfileGroupID *string
+}
+
+// SearchKeyword is one search term that showed the location.
+type SearchKeyword struct {
+	Keyword string `json:"keyword"`
+	// Impressions is nil for low-volume keywords; see ImpressionsThreshold.
+	Impressions *int `json:"impressions"`
+	// ImpressionsThreshold is the upper bound when Google reports no exact count.
+	ImpressionsThreshold *int `json:"impressions_threshold"`
+}
+
+// SearchKeywordsMonth holds the keywords for one month ("YYYY-MM").
+type SearchKeywordsMonth struct {
+	Month    string          `json:"month"`
+	Keywords []SearchKeyword `json:"keywords"`
+}
+
+// SearchKeywordsResponse is returned by GoogleBusinessService.SearchKeywords.
+type SearchKeywordsResponse struct {
+	Months []SearchKeywordsMonth `json:"months"`
+}
+
+// SearchKeywords returns the searches that showed the location in Google
+// Search and Maps, month by month. Unlike the rest of this service, the
+// response is PostProxy-shaped (snake_case) and typed.
+func (s *GoogleBusinessService) SearchKeywords(ctx context.Context, profileID, locationID string, opts *GoogleBusinessSearchKeywordsOptions) (*SearchKeywordsResponse, error) {
+	params := url.Values{}
+	params.Set("location_id", locationID)
+	var pg *string
+	if opts != nil {
+		setString(params, "from_month", opts.FromMonth)
+		setString(params, "to_month", opts.ToMonth)
+		pg = opts.ProfileGroupID
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, s.path(profileID, "search_keywords"), withParams(params), withProfileGroupID(pg))
+	if err != nil {
+		return nil, err
+	}
+
+	var result SearchKeywordsResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

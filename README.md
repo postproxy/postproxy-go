@@ -207,6 +207,26 @@ platforms := &postproxy.PlatformParams{
 	// TikTok: CoverURL, ThumbOffset.
 }
 
+// Instagram: turn comments off, tag a location (a Facebook Page id with an
+// address; post and reel, not stories) and keep a reel off the feed/grid.
+// LinkedIn: a title for an attached document and a first comment (not on
+// polls). YouTube: add the video to a playlist from Profiles.YouTubePlaylists.
+reel := postproxy.InstagramFormatReel
+disableComments, shareToFeed := true, false
+locationID := "110843418940484"
+docTitle, firstComment := "Q3 report", "Full deck in the PDF"
+ytTitle, playlistID := "Intro", "PL1234567890"
+platforms = &postproxy.PlatformParams{
+	Instagram: &postproxy.InstagramParams{
+		Format:         &reel,
+		DisableComment: &disableComments,
+		LocationID:     &locationID,
+		ShareToFeed:    &shareToFeed, // reels only
+	},
+	LinkedIn: &postproxy.LinkedInParams{DocumentTitle: &docTitle, FirstComment: &firstComment},
+	YouTube:  &postproxy.YouTubeParams{Title: &ytTitle, PlaylistID: &playlistID},
+}
+
 // Custom cover from disk. CoverFile (Instagram, TikTok, YouTube, Pinterest) is
 // a local path the SDK uploads with the post — the request switches to
 // multipart even without MediaFiles. A base64 "data:image/jpeg;base64,..." URL
@@ -427,7 +447,7 @@ valid := postproxy.VerifyWebhookSignature(
 
 Subscribe to any of these events (or pass `[]string{"*"}` for all):
 
-`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.edited`, `platform_post.edit_failed`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `profile.placements_synced`, `placement.orphaned`, `placement.restored`, `media.failed`, `comment.created`, `comment.failed`, `comment.failed_waiting_for_retry`, `comment.delivery_unconfirmed`, `comment.edited`, `comment.edit_failed`, `profile_comment.created`, `profile_comment.failed`, `profile_comment.failed_waiting_for_retry`, `profile_comment.deleted`, `message.received`, `message.sent`, `message.delivered`, `message.read`, `message.edited`, `message.deleted`, `message.failed_waiting_for_retry`, `message.failed`, `reaction.received`, `referral.received`, `message_template.status_updated`, `message_template.category_updated`, `placement.name_status_updated`, `placement.quality_updated`, `whatsapp.automatic_event`.
+`post.processed`, `post.imported`, `platform_post.published`, `platform_post.failed`, `platform_post.failed_waiting_for_retry`, `platform_post.edited`, `platform_post.edit_failed`, `platform_post.insights`, `profile.connected`, `profile.disconnected`, `profile.stats`, `profile.placements_synced`, `placement.orphaned`, `placement.restored`, `media.failed`, `comment.created`, `comment.failed`, `comment.failed_waiting_for_retry`, `comment.delivery_unconfirmed`, `comment.edited`, `comment.edit_failed`, `profile_comment.created`, `profile_comment.failed`, `profile_comment.failed_waiting_for_retry`, `profile_comment.edited`, `profile_comment.deleted`, `message.received`, `message.sent`, `message.delivered`, `message.read`, `message.edited`, `message.deleted`, `message.failed_waiting_for_retry`, `message.failed`, `reaction.received`, `referral.received`, `chat.thread_control_changed`, `chat.thread_control_requested`, `message_template.status_updated`, `message_template.category_updated`, `placement.name_status_updated`, `placement.quality_updated`, `whatsapp.automatic_event`.
 
 `ParseWebhookEvent` validates the envelope; the `As*` helpers decode `Data` into a typed payload:
 
@@ -481,6 +501,12 @@ case postproxy.EventMessageTemplateStatusUpdated:
 case postproxy.EventReferralReceived:
 	data, _ := event.AsReferral()
 	fmt.Println(data.Chat.ID, data.CtwaClid)
+case postproxy.EventChatThreadControlChanged:
+	data, _ := event.AsThreadControlChanged()
+	fmt.Println("Chat", data.Chat.ID, "now owned by", data.NewOwnerAppID)
+case postproxy.EventProfileDisconnected:
+	data, _ := event.AsProfileEvent()
+	fmt.Println(data.Name, data.Origin, data.Error) // Error, ErrorDetails when PostProxy disconnected it
 case postproxy.EventWhatsAppAutomaticEvent:
 	data, _ := event.AsWhatsAppAutomaticEvent()
 	fmt.Println(data.EventName, data.CustomData)
@@ -497,6 +523,9 @@ The typed payloads `MessageEventData` (the 8 `message.*` events), `ReactionEvent
 | `profile.placements_synced` | `AsPlacementsSynced` | `PlacementsSyncedData` |
 | `placement.*` | `AsPlacement` | `PlacementEventData` |
 | `referral.received` | `AsReferral` | `ReferralEventData` |
+| `chat.thread_control_changed` | `AsThreadControlChanged` | `ThreadControlChangedEventData` |
+| `chat.thread_control_requested` | `AsThreadControlRequested` | `ThreadControlRequestedEventData` |
+| `profile.connected`, `profile.disconnected` | `AsProfileEvent` | `ProfileEventData` (`Origin`, `Error`, `ErrorDetails` on disconnects) |
 | `message_template.*` | `AsMessageTemplate` | `MessageTemplateEventData` |
 | `whatsapp.automatic_event` | `AsWhatsAppAutomaticEvent` | `WhatsAppAutomaticEventData` |
 
@@ -661,6 +690,16 @@ client.Chats.MarkRead(ctx, chat.ID, nil)
 client.Chats.StartTyping(ctx, chat.ID, nil)
 client.Chats.StopTyping(ctx, chat.ID, nil)
 
+// Thread control (Facebook & Instagram): move the conversation between Meta
+// apps sharing the inbox. Each returns the chat; Metadata["thread_control"]
+// holds the owner.
+note := "escalated to support"
+client.Chats.PassThreadControl(ctx, chat.ID, "263902037430900", &postproxy.ThreadControlOptions{Metadata: &note})
+client.Chats.TakeThreadControl(ctx, chat.ID, nil)
+client.Chats.ReleaseThreadControl(ctx, chat.ID, nil)
+client.Chats.RequestThreadControl(ctx, chat.ID, nil) // owner decides; watch chat.thread_control_changed
+owner, err := client.Chats.ThreadOwner(ctx, chat.ID, nil) // AppID, ExpiresAt (both nil when idle)
+
 // List messages in a chat
 dir := postproxy.MessageDirectionInbound
 messages, err := client.Messages.List(ctx, chat.ID, &postproxy.MessageListOptions{Direction: &dir})
@@ -692,6 +731,7 @@ client.Messages.React(ctx, sent.ID, &postproxy.MessageReactOptions{Reaction: &re
 client.Messages.Unreact(ctx, sent.ID, nil)
 
 // Telegram: thread under a message and attach an inline keyboard
+// (ReplyToExternalID also works on WhatsApp and Instagram)
 replyTo := "4821"
 client.Messages.Send(ctx, chat.ID, &postproxy.MessageSendOptions{
 	Body:              &body,
@@ -945,6 +985,31 @@ audio, err := client.Profiles.InstagramAvailableAudio(ctx, "profile-id", &postpr
 fields := "about,website"
 page, err := client.Profiles.FacebookPage(ctx, "profile-id", "page-id", &postproxy.FacebookPageOptions{Fields: &fields})
 _, err = client.Profiles.UpdateFacebookPage(ctx, "profile-id", "page-id", map[string]any{"about": "Fresh coffee"}, nil)
+
+// Instagram (Facebook login): incoming collaboration invites
+invites, err := client.Profiles.InstagramCollaborationInvites(ctx, "ig-profile-id", nil) // NextCursor -> After
+_, err = client.Profiles.AcceptInstagramCollaborationInvite(ctx, "ig-profile-id", invites.CollaborationInvites[0].MediaID, nil)
+_, err = client.Profiles.DeclineInstagramCollaborationInvite(ctx, "ig-profile-id", "17890000000000001", nil)
+
+// Pinterest boards: a board is a placement; its ID is the BoardID you publish to
+boardDescription := "Light dinners for hot days"
+privacy := postproxy.PinterestBoardPrivacyPublic // or PinterestBoardPrivacyProtected
+board, err := client.Profiles.CreatePinterestBoard(ctx, "pin-profile-id", "Summer Recipes", &postproxy.PinterestBoardOptions{
+	Description: &boardDescription,
+	Privacy:     &privacy,
+})
+_, err = client.Profiles.DeletePinterestBoard(ctx, "pin-profile-id", board.ID, nil) // also deletes its Pins
+
+// YouTube playlists: publish into one with YouTubeParams.PlaylistID
+playlists, err := client.Profiles.YouTubePlaylists(ctx, "yt-profile-id", nil) // NextPageToken -> PageToken
+public := postproxy.YouTubePrivacyPublic
+playlist, err := client.Profiles.CreateYouTubePlaylist(ctx, "yt-profile-id", "Tutorials", &postproxy.YouTubePlaylistCreateOptions{
+	PrivacyStatus: &public,
+})
+// Nil fields keep their value; a pointer to "" clears the description
+empty := ""
+_, err = client.Profiles.UpdateYouTubePlaylist(ctx, "yt-profile-id", playlist.ID, &postproxy.YouTubePlaylistUpdateOptions{Description: &empty})
+_, err = client.Profiles.DeleteYouTubePlaylist(ctx, "yt-profile-id", playlist.ID, nil) // keeps the videos
 ```
 
 `Profile` carries `Username`, `PlatformID`, `PlatformURL`, `AvatarURL`,
@@ -1164,6 +1229,19 @@ _, err = gbp.CreateMedia(ctx, "profile-id", "location-id", "https://example.com/
 	&postproxy.GoogleBusinessMediaOptions{Category: &category})
 media, err := gbp.Media(ctx, "profile-id", "location-id", nil)
 _, err = gbp.DeleteMedia(ctx, "profile-id", "location-id", "accounts/1/locations/1/media/9", nil)
+
+// Search keywords that showed the location, month by month (max 12 months).
+// Unlike the calls above, the response is typed (SearchKeywordsResponse).
+from, to := "2026-07", "2026-09"
+kw, err := gbp.SearchKeywords(ctx, "profile-id", "location-id", &postproxy.GoogleBusinessSearchKeywordsOptions{
+	FromMonth: &from, ToMonth: &to,
+})
+for _, month := range kw.Months {
+	for _, k := range month.Keywords {
+		// Low-volume keywords have a nil Impressions and an ImpressionsThreshold bound
+		fmt.Println(month.Month, k.Keyword, k.Impressions, k.ImpressionsThreshold)
+	}
+}
 ```
 
 ### WhatsApp templates

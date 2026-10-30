@@ -792,6 +792,31 @@ func TestPostsCreate_NewPlatformParams(t *testing.T) {
 	}`)
 }
 
+func TestPostsCreate_PlatformParamsAddedIn115(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "p"})
+
+	reel := InstagramFormatReel
+	_, err := c.Posts.Create(context.Background(), "hi", []string{"prof_1"}, &PostCreateOptions{
+		Platforms: &PlatformParams{
+			Instagram: &InstagramParams{
+				Format: &reel, DisableComment: ptr(true), LocationID: ptr("110843418940484"), ShareToFeed: ptr(false),
+			},
+			LinkedIn: &LinkedInParams{DocumentTitle: ptr("Q3 report"), FirstComment: ptr("Full deck in the PDF")},
+			YouTube:  &YouTubeParams{Title: ptr("Intro"), PlaylistID: ptr("PL1")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	payload := requests()[0].JSON(t).(map[string]any)
+	assertJSON(t, payload["platforms"], `{
+		"instagram": {"format":"reel","disable_comment":true,"location_id":"110843418940484","share_to_feed":false},
+		"linkedin": {"document_title":"Q3 report","first_comment":"Full deck in the PDF"},
+		"youtube": {"title":"Intro","playlist_id":"PL1"}
+	}`)
+}
+
 func TestPostsCreate_SkipDuplicateCheck(t *testing.T) {
 	c, requests := newRecordingClient(t, map[string]any{"id": "p"})
 	ctx := context.Background()

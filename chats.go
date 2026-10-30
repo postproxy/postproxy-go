@@ -122,6 +122,76 @@ func (s *ChatsService) StopTyping(ctx context.Context, chatID string, opts *Requ
 	return s.typingAction(ctx, chatID, "stop_typing", opts)
 }
 
+// --- Thread control (Facebook & Instagram) ---
+//
+// Meta gives one app at a time control of a conversation when several share a
+// Page or Instagram inbox. These return the chat, whose
+// Metadata["thread_control"] holds the owner Meta reports back.
+
+// PassThreadControl hands the conversation to another Meta app, e.g. Page
+// Inbox "263902037430900" or Instagram Inbox "1217981644879628".
+func (s *ChatsService) PassThreadControl(ctx context.Context, chatID, targetAppID string, opts *ThreadControlOptions) (*Chat, error) {
+	return s.threadControl(ctx, chatID, "pass_thread_control", map[string]any{"target_app_id": targetAppID}, opts)
+}
+
+// TakeThreadControl takes the conversation from whichever app holds it. Needs
+// Conversation Routing; Instagram must be connected via Facebook.
+func (s *ChatsService) TakeThreadControl(ctx context.Context, chatID string, opts *ThreadControlOptions) (*Chat, error) {
+	return s.threadControl(ctx, chatID, "take_thread_control", map[string]any{}, opts)
+}
+
+// ReleaseThreadControl gives up control; the conversation goes idle.
+func (s *ChatsService) ReleaseThreadControl(ctx context.Context, chatID string, opts *ThreadControlOptions) (*Chat, error) {
+	return s.threadControl(ctx, chatID, "release_thread_control", map[string]any{}, opts)
+}
+
+// RequestThreadControl asks the current owner to pass the conversation.
+// Nothing changes until it does — watch for EventChatThreadControlChanged.
+func (s *ChatsService) RequestThreadControl(ctx context.Context, chatID string, opts *ThreadControlOptions) (*Chat, error) {
+	return s.threadControl(ctx, chatID, "request_thread_control", map[string]any{}, opts)
+}
+
+// ThreadOwner asks Meta who controls the conversation right now.
+func (s *ChatsService) ThreadOwner(ctx context.Context, chatID string, opts *RequestOptions) (*ThreadOwner, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	data, err := s.client.request(ctx, http.MethodGet, "/chats/"+chatID+"/thread_owner", reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ThreadOwner
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (s *ChatsService) threadControl(ctx context.Context, chatID, action string, body map[string]any, opts *ThreadControlOptions) (*Chat, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.Metadata != nil {
+			body["metadata"] = *opts.Metadata
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+	reqOpts = append(reqOpts, withJSON(body))
+
+	data, err := s.client.request(ctx, http.MethodPost, "/chats/"+chatID+"/"+action, reqOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Chat
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (s *ChatsService) typingAction(ctx context.Context, chatID, action string, opts *RequestOptions) (*AcceptedResponse, error) {
 	var reqOpts []requestOption
 	if opts != nil {

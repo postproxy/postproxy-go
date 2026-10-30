@@ -587,3 +587,123 @@ func TestProfilesChatSyncs(t *testing.T) {
 		t.Errorf("unexpected path: %s", reqs[2].Path)
 	}
 }
+
+func TestProfilesInstagramCollaborationInvites(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{
+		"collaboration_invites": []any{map[string]any{
+			"media_id": "1789", "media_owner_username": "partner_brand", "caption": "Collab", "media_url": "https://x",
+		}},
+		"next_cursor": nil,
+	})
+	ctx := context.Background()
+
+	list, err := c.Profiles.InstagramCollaborationInvites(ctx, "p1", &InstagramCollaborationInvitesOptions{After: ptr("cur_1")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if list.CollaborationInvites[0].MediaID != "1789" || list.NextCursor != nil {
+		t.Errorf("unexpected list: %+v", list)
+	}
+	if _, err := c.Profiles.AcceptInstagramCollaborationInvite(ctx, "p1", "1789", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Profiles.DeclineInstagramCollaborationInvite(ctx, "p1", "1790", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := requests()
+	if reqs[0].Path != "/api/profiles/p1/instagram/collaboration_invites" || reqs[0].Query.Get("after") != "cur_1" {
+		t.Errorf("unexpected list request: %s %v", reqs[0].Path, reqs[0].Query)
+	}
+	if reqs[1].Method != "POST" || reqs[1].Path != "/api/profiles/p1/instagram/accept_collaboration_invite" {
+		t.Errorf("unexpected accept request: %s %s", reqs[1].Method, reqs[1].Path)
+	}
+	assertJSON(t, reqs[1].JSON(t), `{"media_id":"1789"}`)
+	if reqs[2].Path != "/api/profiles/p1/instagram/decline_collaboration_invite" {
+		t.Errorf("unexpected decline path: %s", reqs[2].Path)
+	}
+	assertJSON(t, reqs[2].JSON(t), `{"media_id":"1790"}`)
+}
+
+func TestProfilesInstagramCollaborationInviteResult(t *testing.T) {
+	c, _ := newRecordingClient(t, map[string]any{"accepted": true, "media_id": "1789"})
+
+	result, err := c.Profiles.AcceptInstagramCollaborationInvite(context.Background(), "p1", "1789", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Accepted == nil || !*result.Accepted || result.MediaID != "1789" || result.Declined != nil {
+		t.Errorf("unexpected result: %+v", result)
+	}
+}
+
+func TestProfilesPinterestBoards(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"id": "1022", "name": "Summer Recipes", "avatar_url": nil, "metadata": map[string]any{}})
+	ctx := context.Background()
+
+	privacy := PinterestBoardPrivacyProtected
+	board, err := c.Profiles.CreatePinterestBoard(ctx, "p1", "Summer Recipes", &PinterestBoardOptions{
+		Description: ptr("Light dinners"), Privacy: &privacy,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if board.ID != "1022" {
+		t.Errorf("unexpected board: %+v", board)
+	}
+	if _, err := c.Profiles.DeletePinterestBoard(ctx, "p1", "1022", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := requests()
+	if reqs[0].Method != "POST" || reqs[0].Path != "/api/profiles/p1/pinterest/create_board" {
+		t.Errorf("unexpected create request: %s %s", reqs[0].Method, reqs[0].Path)
+	}
+	assertJSON(t, reqs[0].JSON(t), `{"name":"Summer Recipes","description":"Light dinners","privacy":"PROTECTED"}`)
+	if reqs[1].Method != "DELETE" || reqs[1].Path != "/api/profiles/p1/pinterest/delete_board" || reqs[1].Query.Get("board_id") != "1022" {
+		t.Errorf("unexpected delete request: %s %s %v", reqs[1].Method, reqs[1].Path, reqs[1].Query)
+	}
+}
+
+func TestProfilesYouTubePlaylists(t *testing.T) {
+	playlist := map[string]any{
+		"id": "PL1", "title": "Tutorials", "description": "", "privacy_status": "public",
+		"item_count": 3, "thumbnail_url": nil, "published_at": "2026-03-14T09:21:00.000Z",
+	}
+	c, requests := newRecordingClient(t, map[string]any{"data": []any{playlist}, "next_page_token": nil})
+	ctx := context.Background()
+
+	list, err := c.Profiles.YouTubePlaylists(ctx, "p1", &YouTubePlaylistsOptions{PageToken: ptr("tok")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if list.Data[0].ID != "PL1" || list.Data[0].PrivacyStatus != YouTubePrivacyPublic || list.Data[0].ItemCount != 3 || list.NextPageToken != nil {
+		t.Errorf("unexpected list: %+v", list)
+	}
+	unlisted := YouTubePrivacyUnlisted
+	if _, err := c.Profiles.CreateYouTubePlaylist(ctx, "p1", "Tutorials", &YouTubePlaylistCreateOptions{PrivacyStatus: &unlisted}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Profiles.UpdateYouTubePlaylist(ctx, "p1", "PL1", &YouTubePlaylistUpdateOptions{Description: ptr("")}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Profiles.DeleteYouTubePlaylist(ctx, "p1", "PL1", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	reqs := requests()
+	if reqs[0].Path != "/api/profiles/p1/youtube/playlists" || reqs[0].Query.Get("page_token") != "tok" {
+		t.Errorf("unexpected list request: %s %v", reqs[0].Path, reqs[0].Query)
+	}
+	if reqs[1].Method != "POST" || reqs[1].Path != "/api/profiles/p1/youtube/create_playlist" {
+		t.Errorf("unexpected create request: %s %s", reqs[1].Method, reqs[1].Path)
+	}
+	assertJSON(t, reqs[1].JSON(t), `{"title":"Tutorials","privacy_status":"unlisted"}`)
+	if reqs[2].Method != "PATCH" || reqs[2].Path != "/api/profiles/p1/youtube/update_playlist" {
+		t.Errorf("unexpected update request: %s %s", reqs[2].Method, reqs[2].Path)
+	}
+	assertJSON(t, reqs[2].JSON(t), `{"playlist_id":"PL1","description":""}`)
+	if reqs[3].Method != "DELETE" || reqs[3].Path != "/api/profiles/p1/youtube/delete_playlist" || reqs[3].Query.Get("playlist_id") != "PL1" {
+		t.Errorf("unexpected delete request: %s %s %v", reqs[3].Method, reqs[3].Path, reqs[3].Query)
+	}
+}

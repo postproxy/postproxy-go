@@ -68,7 +68,8 @@ func (e *WebhookEvent) AsReaction() (*ReactionEventData, error) {
 }
 
 // AsProfileCommentCreated decodes Data as a ProfileCommentCreatedData. Use for
-// profile_comment.* events (created, failed, failed_waiting_for_retry, deleted).
+// profile_comment.* events (created, failed, failed_waiting_for_retry, edited,
+// deleted).
 func (e *WebhookEvent) AsProfileCommentCreated() (*ProfileCommentCreatedData, error) {
 	return decodeAs[ProfileCommentCreatedData](e.Data)
 }
@@ -87,6 +88,18 @@ func (e *WebhookEvent) AsPlacement() (*PlacementEventData, error) {
 // AsReferral decodes Data as a ReferralEventData. Use when Type == EventReferralReceived.
 func (e *WebhookEvent) AsReferral() (*ReferralEventData, error) {
 	return decodeAs[ReferralEventData](e.Data)
+}
+
+// AsThreadControlChanged decodes Data as a ThreadControlChangedEventData. Use
+// when Type == EventChatThreadControlChanged.
+func (e *WebhookEvent) AsThreadControlChanged() (*ThreadControlChangedEventData, error) {
+	return decodeAs[ThreadControlChangedEventData](e.Data)
+}
+
+// AsThreadControlRequested decodes Data as a ThreadControlRequestedEventData.
+// Use when Type == EventChatThreadControlRequested.
+func (e *WebhookEvent) AsThreadControlRequested() (*ThreadControlRequestedEventData, error) {
+	return decodeAs[ThreadControlRequestedEventData](e.Data)
 }
 
 // AsMessageTemplate decodes Data as a MessageTemplateEventData. Use for
@@ -173,6 +186,11 @@ type ProfileEventData struct {
 	// Origin is set on profile.disconnected: "user" when a user disconnected
 	// it, "automated" when PostProxy did.
 	Origin *string `json:"origin,omitempty"`
+	// Error is set on profile.disconnected with Origin "automated": why
+	// PostProxy deactivated it, e.g. "Twitter access revoked".
+	Error *string `json:"error,omitempty"`
+	// ErrorDetails is the raw platform error behind the disconnect, when available.
+	ErrorDetails *ErrorDetails `json:"error_details,omitempty"`
 }
 
 // PlacementEventData is the payload of placement.* events. Name-status and
@@ -283,7 +301,7 @@ type ProfileCommentCreatedData struct {
 	CreatedAt        string         `json:"created_at"`
 }
 
-// WebhookChatData is the chat carried by a referral.received event.
+// WebhookChatData is the chat carried by referral.received and chat.thread_control_* events.
 type WebhookChatData struct {
 	ID                    string   `json:"id"`
 	ProfileID             string   `json:"profile_id"`
@@ -307,6 +325,28 @@ type ReferralEventData struct {
 	// CtwaClid is the WhatsApp click-to-WhatsApp ad click id.
 	CtwaClid   *string `json:"ctwa_clid,omitempty"`
 	OccurredAt *string `json:"occurred_at,omitempty"`
+}
+
+// ThreadControlChangedEventData is the payload of a
+// chat.thread_control_changed event: another Meta app passed or took a
+// Facebook / Instagram conversation.
+type ThreadControlChangedEventData struct {
+	Chat WebhookChatData `json:"chat"`
+	// PreviousOwnerAppID is nil when the conversation was idle.
+	PreviousOwnerAppID *string `json:"previous_owner_app_id,omitempty"`
+	NewOwnerAppID      *string `json:"new_owner_app_id"`
+	Metadata           *string `json:"metadata,omitempty"`
+	OccurredAt         *string `json:"occurred_at,omitempty"`
+}
+
+// ThreadControlRequestedEventData is the payload of a
+// chat.thread_control_requested event: another Meta app asked PostProxy to
+// pass a conversation.
+type ThreadControlRequestedEventData struct {
+	Chat                WebhookChatData `json:"chat"`
+	RequestedOwnerAppID *string         `json:"requested_owner_app_id"`
+	Metadata            *string         `json:"metadata,omitempty"`
+	OccurredAt          *string         `json:"occurred_at,omitempty"`
 }
 
 // MessageTemplateEventData is the payload of message_template.* events.

@@ -94,4 +94,24 @@ func main() {
 		log.Fatalf("Error listing media: %v", err)
 	}
 	fmt.Printf("Media: %v\n", media)
+
+	// Searches that showed the location, month by month
+	fromMonth, toMonth := "2026-07", "2026-09"
+	keywords, err := gbp.SearchKeywords(ctx, profileID, locationID, &postproxy.GoogleBusinessSearchKeywordsOptions{
+		FromMonth: &fromMonth,
+		ToMonth:   &toMonth,
+	})
+	if err != nil {
+		log.Fatalf("Error reading search keywords: %v", err)
+	}
+	for _, month := range keywords.Months {
+		for _, k := range month.Keywords {
+			// Low-volume keywords report only an upper bound
+			if k.Impressions != nil {
+				fmt.Printf("%s %s %d\n", month.Month, k.Keyword, *k.Impressions)
+			} else if k.ImpressionsThreshold != nil {
+				fmt.Printf("%s %s <%d\n", month.Month, k.Keyword, *k.ImpressionsThreshold)
+			}
+		}
+	}
 }

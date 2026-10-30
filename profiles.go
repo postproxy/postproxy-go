@@ -444,6 +444,183 @@ func (s *ProfilesService) InstagramAvailableAudio(ctx context.Context, id string
 	return &result, nil
 }
 
+// InstagramCollaborationInvites lists posts from other accounts that invited
+// this Instagram profile as a collaborator. Profiles connected via Facebook
+// login only.
+func (s *ProfilesService) InstagramCollaborationInvites(ctx context.Context, id string, opts *InstagramCollaborationInvitesOptions) (*InstagramCollaborationInvitesResponse, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.After != nil {
+			params := url.Values{}
+			params.Set("after", *opts.After)
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	var result InstagramCollaborationInvitesResponse
+	if err := s.do(ctx, http.MethodGet, id, "/instagram/collaboration_invites", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// AcceptInstagramCollaborationInvite accepts a collaboration invite. mediaID
+// is the invite's MediaID.
+func (s *ProfilesService) AcceptInstagramCollaborationInvite(ctx context.Context, id, mediaID string, opts *RequestOptions) (*InstagramCollaborationInviteResult, error) {
+	return s.collaborationInvite(ctx, id, "accept_collaboration_invite", mediaID, opts)
+}
+
+// DeclineInstagramCollaborationInvite declines a collaboration invite.
+func (s *ProfilesService) DeclineInstagramCollaborationInvite(ctx context.Context, id, mediaID string, opts *RequestOptions) (*InstagramCollaborationInviteResult, error) {
+	return s.collaborationInvite(ctx, id, "decline_collaboration_invite", mediaID, opts)
+}
+
+func (s *ProfilesService) collaborationInvite(ctx context.Context, id, action, mediaID string, opts *RequestOptions) (*InstagramCollaborationInviteResult, error) {
+	reqOpts := []requestOption{withJSON(map[string]string{"media_id": mediaID})}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	var result InstagramCollaborationInviteResult
+	if err := s.do(ctx, http.MethodPost, id, "/instagram/"+action, &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CreatePinterestBoard creates a board. Pinterest only. Boards are the
+// profile's placements; the new board's ID is the BoardID you publish to.
+func (s *ProfilesService) CreatePinterestBoard(ctx context.Context, id, name string, opts *PinterestBoardOptions) (*Placement, error) {
+	body := map[string]any{"name": name}
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.Description != nil {
+			body["description"] = *opts.Description
+		}
+		if opts.Privacy != nil {
+			body["privacy"] = string(*opts.Privacy)
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+	reqOpts = append(reqOpts, withJSON(body))
+
+	var result Placement
+	if err := s.do(ctx, http.MethodPost, id, "/pinterest/create_board", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeletePinterestBoard deletes a board — and every Pin on it — on Pinterest.
+// Cannot be undone.
+func (s *ProfilesService) DeletePinterestBoard(ctx context.Context, id, boardID string, opts *RequestOptions) (*PinterestBoardDeleted, error) {
+	params := url.Values{}
+	params.Set("board_id", boardID)
+	reqOpts := []requestOption{withParams(params)}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	var result PinterestBoardDeleted
+	if err := s.do(ctx, http.MethodDelete, id, "/pinterest/delete_board", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// YouTubePlaylists lists the channel's playlists, up to 50 per page. YouTube only.
+func (s *ProfilesService) YouTubePlaylists(ctx context.Context, id string, opts *YouTubePlaylistsOptions) (*YouTubePlaylistsResponse, error) {
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.PageToken != nil {
+			params := url.Values{}
+			params.Set("page_token", *opts.PageToken)
+			reqOpts = append(reqOpts, withParams(params))
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	var result YouTubePlaylistsResponse
+	if err := s.do(ctx, http.MethodGet, id, "/youtube/playlists", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// CreateYouTubePlaylist creates a playlist. YouTube only.
+func (s *ProfilesService) CreateYouTubePlaylist(ctx context.Context, id, title string, opts *YouTubePlaylistCreateOptions) (*YouTubePlaylist, error) {
+	body := map[string]any{"title": title}
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.Description != nil {
+			body["description"] = *opts.Description
+		}
+		if opts.PrivacyStatus != nil {
+			body["privacy_status"] = string(*opts.PrivacyStatus)
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+	reqOpts = append(reqOpts, withJSON(body))
+
+	var result YouTubePlaylist
+	if err := s.do(ctx, http.MethodPost, id, "/youtube/create_playlist", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// UpdateYouTubePlaylist changes a playlist. Nil fields keep their current
+// value; Description set to a pointer to "" clears it.
+func (s *ProfilesService) UpdateYouTubePlaylist(ctx context.Context, id, playlistID string, opts *YouTubePlaylistUpdateOptions) (*YouTubePlaylist, error) {
+	body := map[string]any{"playlist_id": playlistID}
+	var reqOpts []requestOption
+	if opts != nil {
+		if opts.Title != nil {
+			body["title"] = *opts.Title
+		}
+		if opts.Description != nil {
+			body["description"] = *opts.Description
+		}
+		if opts.PrivacyStatus != nil {
+			body["privacy_status"] = string(*opts.PrivacyStatus)
+		}
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+	reqOpts = append(reqOpts, withJSON(body))
+
+	var result YouTubePlaylist
+	if err := s.do(ctx, http.MethodPatch, id, "/youtube/update_playlist", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteYouTubePlaylist deletes a playlist. The videos in it are not deleted.
+func (s *ProfilesService) DeleteYouTubePlaylist(ctx context.Context, id, playlistID string, opts *RequestOptions) (*YouTubePlaylistDeleted, error) {
+	params := url.Values{}
+	params.Set("playlist_id", playlistID)
+	reqOpts := []requestOption{withParams(params)}
+	if opts != nil {
+		reqOpts = append(reqOpts, withProfileGroupID(opts.ProfileGroupID))
+	}
+
+	var result YouTubePlaylistDeleted
+	if err := s.do(ctx, http.MethodDelete, id, "/youtube/delete_playlist", &result, reqOpts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// do sends a request to /profiles/{id}{path} and decodes the response into out.
+func (s *ProfilesService) do(ctx context.Context, method, id, path string, out any, reqOpts ...requestOption) error {
+	data, err := s.client.request(ctx, method, "/profiles/"+id+path, reqOpts...)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
+}
+
 // FacebookPage reads a Facebook Page's about / contact fields. Facebook only;
 // pageID is the placement id from Placements.
 func (s *ProfilesService) FacebookPage(ctx context.Context, id, pageID string, opts *FacebookPageOptions) (map[string]any, error) {

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.15.0] - 2026-10-30
+
+### Added
+
+- **Thread control (Facebook & Instagram).** `Chats.PassThreadControl(ctx, chatID, targetAppID, opts)`, `TakeThreadControl`, `ReleaseThreadControl` and `RequestThreadControl` (optional `ThreadControlOptions.Metadata`; each returns the `Chat`, whose `Metadata["thread_control"]` holds the owner) and `Chats.ThreadOwner` (`ThreadOwner`: `AppID`, `ExpiresAt`).
+- **Instagram collaboration invites** (Facebook login): `Profiles.InstagramCollaborationInvites` (`InstagramCollaborationInvitesOptions.After`, `InstagramCollaborationInvitesResponse`), `AcceptInstagramCollaborationInvite` and `DeclineInstagramCollaborationInvite` (`InstagramCollaborationInviteResult`).
+- **Pinterest boards:** `Profiles.CreatePinterestBoard(ctx, id, name, opts)` (`PinterestBoardOptions`: `Description`, `Privacy` as `PinterestBoardPrivacyPublic` / `PinterestBoardPrivacyProtected`) returns the new `Placement`; `Profiles.DeletePinterestBoard` (`PinterestBoardDeleted`).
+- **YouTube playlists:** `Profiles.YouTubePlaylists` (`YouTubePlaylistsOptions.PageToken`, `YouTubePlaylistsResponse`), `CreateYouTubePlaylist` (`YouTubePlaylistCreateOptions`), `UpdateYouTubePlaylist` (`YouTubePlaylistUpdateOptions` — nil fields are left alone, a pointer to `""` clears the description) and `DeleteYouTubePlaylist` (`YouTubePlaylistDeleted`), typed as `YouTubePlaylist`.
+- **Google Business:** `GoogleBusiness.SearchKeywords(ctx, profileID, locationID, opts)` (`GoogleBusinessSearchKeywordsOptions`: `FromMonth`, `ToMonth`). Unlike the rest of the service the response is typed: `SearchKeywordsResponse` → `SearchKeywordsMonth` → `SearchKeyword` (`Impressions`, or `ImpressionsThreshold` for low-volume keywords).
+- **Post params:** `InstagramParams.DisableComment`, `LocationID` and (reels) `ShareToFeed`; `LinkedInParams.DocumentTitle` and `FirstComment`; `YouTubeParams.PlaylistID`.
+- **Webhooks:** `profile_comment.edited` (`EventProfileCommentEdited`, decode with `AsProfileCommentCreated`), `chat.thread_control_changed` (`EventChatThreadControlChanged`, `AsThreadControlChanged` → `ThreadControlChangedEventData`) and `chat.thread_control_requested` (`EventChatThreadControlRequested`, `AsThreadControlRequested` → `ThreadControlRequestedEventData`). `ProfileEventData` gains `Error` and `ErrorDetails` on `profile.disconnected`.
+- Examples: `examples/youtube-playlists`, `examples/thread-control`; search keywords in `examples/google-business`.
+
+### Changed
+
+- `MessageSendOptions.ReplyToExternalID` now also works on Instagram chats.
+
 ## [1.14.0] - 2026-10-20
 
 ### Added

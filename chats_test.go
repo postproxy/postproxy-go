@@ -242,3 +242,63 @@ func TestChatsWhatsAppFields(t *testing.T) {
 		t.Errorf("unexpected within_messaging_window: %v", chat.WithinMessagingWindow)
 	}
 }
+
+func TestChatsPassThreadControl(t *testing.T) {
+	c, requests := newRecordingClient(t, mockChat)
+
+	chat, err := c.Chats.PassThreadControl(context.Background(), "chat_xyz789", "263902037430900", &ThreadControlOptions{Metadata: ptr("escalated to support")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chat.ID != "chat_xyz789" {
+		t.Errorf("unexpected chat: %+v", chat)
+	}
+	req := requests()[0]
+	if req.Method != "POST" || req.Path != "/api/chats/chat_xyz789/pass_thread_control" {
+		t.Errorf("unexpected request: %s %s", req.Method, req.Path)
+	}
+	assertJSON(t, req.JSON(t), `{"target_app_id":"263902037430900","metadata":"escalated to support"}`)
+}
+
+func TestChatsTakeReleaseRequestThreadControl(t *testing.T) {
+	c, requests := newRecordingClient(t, mockChat)
+	ctx := context.Background()
+
+	if _, err := c.Chats.TakeThreadControl(ctx, "chat_xyz789", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Chats.ReleaseThreadControl(ctx, "chat_xyz789", &ThreadControlOptions{Metadata: ptr("done")}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.Chats.RequestThreadControl(ctx, "chat_xyz789", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reqs := requests()
+	if reqs[0].Path != "/api/chats/chat_xyz789/take_thread_control" ||
+		reqs[1].Path != "/api/chats/chat_xyz789/release_thread_control" ||
+		reqs[2].Path != "/api/chats/chat_xyz789/request_thread_control" {
+		t.Errorf("unexpected paths: %s, %s, %s", reqs[0].Path, reqs[1].Path, reqs[2].Path)
+	}
+	for _, r := range reqs {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+	}
+	assertJSON(t, reqs[0].JSON(t), `{}`)
+	assertJSON(t, reqs[1].JSON(t), `{"metadata":"done"}`)
+}
+
+func TestChatsThreadOwner(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{"app_id": "263902037430900", "expires_at": "2026-10-28T12:00:00Z"})
+
+	owner, err := c.Chats.ThreadOwner(context.Background(), "chat_xyz789", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if owner.AppID == nil || *owner.AppID != "263902037430900" || owner.ExpiresAt == nil {
+		t.Errorf("unexpected owner: %+v", owner)
+	}
+	if req := requests()[0]; req.Method != "GET" || req.Path != "/api/chats/chat_xyz789/thread_owner" {
+		t.Errorf("unexpected request: %s %s", req.Method, req.Path)
+	}
+}

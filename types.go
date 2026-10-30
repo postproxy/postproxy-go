@@ -325,6 +325,15 @@ type InstagramParams struct {
 	UserTags      []InstagramUserTag      `json:"user_tags,omitempty"`
 	AltText       AltText                 `json:"alt_text,omitempty"`
 	MadeWithAI    *bool                   `json:"made_with_ai,omitempty"`
+	// DisableComment turns comments off on the post, applied right after
+	// publishing. Post, reel.
+	DisableComment *bool `json:"disable_comment,omitempty"`
+	// LocationID is the numeric id of a Facebook Page with an address. Post,
+	// reel; not stories.
+	LocationID *string `json:"location_id,omitempty"`
+	// ShareToFeed is reels only. false publishes to the Reels tab only, not
+	// the feed/grid.
+	ShareToFeed *bool `json:"share_to_feed,omitempty"`
 }
 
 // InstagramUserTag is an Instagram account to tag in a post. Images require X
@@ -379,6 +388,12 @@ type LinkedInParams struct {
 	PollOptions []string `json:"poll_options,omitempty"`
 	// PollDurationDays is 1, 3, 7 (default) or 14.
 	PollDurationDays *int `json:"poll_duration_days,omitempty"`
+	// DocumentTitle is shown above an attached document. Defaults to the file name.
+	DocumentTitle *string `json:"document_title,omitempty"`
+	// FirstComment is posted right after publishing, as the same author (1,250
+	// characters or fewer). Not on polls; profiles connected before 2026-10-28
+	// must reconnect.
+	FirstComment *string `json:"first_comment,omitempty"`
 }
 
 // YouTubeParams contains YouTube-specific post parameters.
@@ -394,6 +409,9 @@ type YouTubeParams struct {
 	Tags                   []string `json:"tags,omitempty"`
 	CategoryID             *string  `json:"category_id,omitempty"`
 	ContainsSyntheticMedia *bool    `json:"contains_synthetic_media,omitempty"`
+	// PlaylistID adds the video to this playlist, from
+	// ProfilesService.YouTubePlaylists.
+	PlaylistID *string `json:"playlist_id,omitempty"`
 }
 
 // PinterestParams contains Pinterest-specific post parameters.
@@ -763,6 +781,120 @@ type InstagramAvailableAudioResponse struct {
 	Data []map[string]any `json:"data"`
 }
 
+// InstagramCollaborationInvitesOptions are the optional parameters for
+// ProfilesService.InstagramCollaborationInvites.
+type InstagramCollaborationInvitesOptions struct {
+	// After is the NextCursor of the previous page.
+	After          *string
+	ProfileGroupID *string
+}
+
+// InstagramCollaborationInvite is a post from another account that invited
+// this Instagram profile as a collaborator.
+type InstagramCollaborationInvite struct {
+	MediaID            string  `json:"media_id"`
+	MediaOwnerUsername *string `json:"media_owner_username"`
+	Caption            *string `json:"caption"`
+	// MediaURL is left out by Instagram for videos with copyrighted or
+	// licensed audio.
+	MediaURL *string `json:"media_url,omitempty"`
+}
+
+// InstagramCollaborationInvitesResponse is a page of collaboration invites.
+type InstagramCollaborationInvitesResponse struct {
+	CollaborationInvites []InstagramCollaborationInvite `json:"collaboration_invites"`
+	// NextCursor is nil on the last page.
+	NextCursor *string `json:"next_cursor"`
+}
+
+// InstagramCollaborationInviteResult is returned by
+// ProfilesService.AcceptInstagramCollaborationInvite (Accepted) and
+// DeclineInstagramCollaborationInvite (Declined).
+type InstagramCollaborationInviteResult struct {
+	MediaID  string `json:"media_id"`
+	Accepted *bool  `json:"accepted,omitempty"`
+	Declined *bool  `json:"declined,omitempty"`
+}
+
+// PinterestBoardOptions are the optional parameters for
+// ProfilesService.CreatePinterestBoard.
+type PinterestBoardOptions struct {
+	Description    *string
+	Privacy        *PinterestBoardPrivacy
+	ProfileGroupID *string
+}
+
+// PinterestBoardDeleted is returned by ProfilesService.DeletePinterestBoard.
+type PinterestBoardDeleted struct {
+	Deleted bool   `json:"deleted"`
+	BoardID string `json:"board_id"`
+}
+
+// YouTubePlaylist is a playlist on a YouTube channel.
+type YouTubePlaylist struct {
+	ID            string         `json:"id"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description"`
+	PrivacyStatus YouTubePrivacy `json:"privacy_status"`
+	ItemCount     int            `json:"item_count"`
+	ThumbnailURL  *string        `json:"thumbnail_url"`
+	PublishedAt   string         `json:"published_at"`
+}
+
+// YouTubePlaylistsOptions are the optional parameters for
+// ProfilesService.YouTubePlaylists.
+type YouTubePlaylistsOptions struct {
+	// PageToken is the NextPageToken of the previous page.
+	PageToken      *string
+	ProfileGroupID *string
+}
+
+// YouTubePlaylistsResponse is a page of up to 50 playlists.
+type YouTubePlaylistsResponse struct {
+	Data []YouTubePlaylist `json:"data"`
+	// NextPageToken is nil on the last page.
+	NextPageToken *string `json:"next_page_token"`
+}
+
+// YouTubePlaylistCreateOptions are the optional parameters for
+// ProfilesService.CreateYouTubePlaylist.
+type YouTubePlaylistCreateOptions struct {
+	Description    *string
+	PrivacyStatus  *YouTubePrivacy
+	ProfileGroupID *string
+}
+
+// YouTubePlaylistUpdateOptions are the fields to change in
+// ProfilesService.UpdateYouTubePlaylist. Nil fields keep their current value;
+// a pointer to "" for Description clears it.
+type YouTubePlaylistUpdateOptions struct {
+	Title          *string
+	Description    *string
+	PrivacyStatus  *YouTubePrivacy
+	ProfileGroupID *string
+}
+
+// YouTubePlaylistDeleted is returned by ProfilesService.DeleteYouTubePlaylist.
+type YouTubePlaylistDeleted struct {
+	Deleted    bool   `json:"deleted"`
+	PlaylistID string `json:"playlist_id"`
+}
+
+// ThreadControlOptions are the optional parameters for the ChatsService
+// thread control calls.
+type ThreadControlOptions struct {
+	// Metadata is a free-form string passed along to the other app.
+	Metadata       *string
+	ProfileGroupID *string
+}
+
+// ThreadOwner is who controls a Facebook / Instagram conversation. Both
+// fields are nil when the conversation is idle.
+type ThreadOwner struct {
+	AppID     *string `json:"app_id"`
+	ExpiresAt *string `json:"expires_at"`
+}
+
 // FacebookPageOptions are the optional parameters for ProfilesService.FacebookPage.
 type FacebookPageOptions struct {
 	// Fields is a comma-separated list of Page fields to read.
@@ -786,17 +918,19 @@ type Chat struct {
 	// ExternalPlacementID is the page / phone number the chat runs through.
 	ExternalPlacementID *string `json:"external_placement_id"`
 	// Group is true for a WhatsApp group chat.
-	Group                  bool           `json:"group"`
-	ParticipantExternalID  string         `json:"participant_external_id"`
-	ParticipantUsername    *string        `json:"participant_username"`
-	ParticipantName        *string        `json:"participant_name"`
-	ParticipantAvatarURL   *string        `json:"participant_avatar_url"`
-	ExternalConversationID *string        `json:"external_conversation_id"`
-	LastInboundAt          *string        `json:"last_inbound_at"`
-	LastOutboundAt         *string        `json:"last_outbound_at"`
-	LastMessageAt          *string        `json:"last_message_at"`
-	Metadata               map[string]any `json:"metadata"`
-	Archived               *bool          `json:"archived,omitempty"`
+	Group                  bool    `json:"group"`
+	ParticipantExternalID  string  `json:"participant_external_id"`
+	ParticipantUsername    *string `json:"participant_username"`
+	ParticipantName        *string `json:"participant_name"`
+	ParticipantAvatarURL   *string `json:"participant_avatar_url"`
+	ExternalConversationID *string `json:"external_conversation_id"`
+	LastInboundAt          *string `json:"last_inbound_at"`
+	LastOutboundAt         *string `json:"last_outbound_at"`
+	LastMessageAt          *string `json:"last_message_at"`
+	// Metadata carries "thread_control" on Facebook and Instagram chats once
+	// known ("owner_app_id", "expires_at", "updated_at").
+	Metadata map[string]any `json:"metadata"`
+	Archived *bool          `json:"archived,omitempty"`
 	// WithinMessagingWindow is WhatsApp-only: whether the 24-hour customer
 	// service window is open. When it's closed only a template can be sent.
 	WithinMessagingWindow *bool  `json:"within_messaging_window,omitempty"`
@@ -1009,10 +1143,12 @@ type MessageListOptions struct {
 // sent on the JSON path only, so pass Media as hosted URLs rather than
 // MediaFiles when combining with an attachment.
 type MessageSendOptions struct {
-	Body              *string
-	Media             []string
-	MediaFiles        []string
-	Tag               *string
+	Body       *string
+	Media      []string
+	MediaFiles []string
+	Tag        *string
+	// ReplyToExternalID quotes the message with this external_id. Telegram,
+	// WhatsApp and Instagram.
 	ReplyToExternalID *string
 	ReplyMarkup       map[string]any
 	QuickReplies      []QuickReply

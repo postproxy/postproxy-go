@@ -174,3 +174,35 @@ func TestGoogleBusinessMedia(t *testing.T) {
 		t.Errorf("unexpected request: %s %v", reqs[2].Method, reqs[2].Query)
 	}
 }
+
+func TestGoogleBusinessSearchKeywords(t *testing.T) {
+	c, requests := newRecordingClient(t, map[string]any{
+		"months": []any{map[string]any{
+			"month": "2026-07",
+			"keywords": []any{
+				map[string]any{"keyword": "coffee near me", "impressions": 245, "impressions_threshold": nil},
+				map[string]any{"keyword": "acme coffee", "impressions": nil, "impressions_threshold": 15},
+			},
+		}},
+	})
+
+	result, err := c.GoogleBusiness.SearchKeywords(context.Background(), "prof_gbp", "loc_1", &GoogleBusinessSearchKeywordsOptions{
+		FromMonth: ptr("2026-07"), ToMonth: ptr("2026-09"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	kw := result.Months[0].Keywords
+	if *kw[0].Impressions != 245 || kw[1].Impressions != nil || *kw[1].ImpressionsThreshold != 15 {
+		t.Errorf("unexpected keywords: %+v", kw)
+	}
+
+	req := requests()[0]
+	if req.Method != "GET" || req.Path != gbpBase+"/search_keywords" {
+		t.Errorf("unexpected request: %s %s", req.Method, req.Path)
+	}
+	q := req.Query
+	if q.Get("location_id") != "loc_1" || q.Get("from_month") != "2026-07" || q.Get("to_month") != "2026-09" {
+		t.Errorf("unexpected query: %v", q)
+	}
+}

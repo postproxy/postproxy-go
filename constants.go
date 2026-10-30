@@ -1,7 +1,7 @@
 package postproxy
 
 // Version is the SDK version, sent as part of the User-Agent header.
-const Version = "1.14.0"
+const Version = "1.15.0"
 
 // Platform represents a social media platform.
 type Platform string
@@ -202,6 +202,15 @@ const (
 	InstagramAudioTypeOriginalSound InstagramAudioType = "original_sound"
 )
 
+// PinterestBoardPrivacy is the visibility of a board created with
+// ProfilesService.CreatePinterestBoard.
+type PinterestBoardPrivacy string
+
+const (
+	PinterestBoardPrivacyPublic    PinterestBoardPrivacy = "PUBLIC"
+	PinterestBoardPrivacyProtected PinterestBoardPrivacy = "PROTECTED"
+)
+
 // ConnectionOnboarding picks the connection flow. Facebook and Instagram
 // profiles connect through Facebook login; WhatsApp through the Cloud API or
 // the WhatsApp Business app.
@@ -278,6 +287,7 @@ const (
 	EventProfileCommentCreated               WebhookEventType = "profile_comment.created"
 	EventProfileCommentFailed                WebhookEventType = "profile_comment.failed"
 	EventProfileCommentFailedWaitingForRetry WebhookEventType = "profile_comment.failed_waiting_for_retry"
+	EventProfileCommentEdited                WebhookEventType = "profile_comment.edited"
 	EventProfileCommentDeleted               WebhookEventType = "profile_comment.deleted"
 	EventMessageReceived                     WebhookEventType = "message.received"
 	EventMessageSent                         WebhookEventType = "message.sent"
@@ -289,6 +299,8 @@ const (
 	EventMessageFailed                       WebhookEventType = "message.failed"
 	EventReactionReceived                    WebhookEventType = "reaction.received"
 	EventReferralReceived                    WebhookEventType = "referral.received"
+	EventChatThreadControlChanged            WebhookEventType = "chat.thread_control_changed"
+	EventChatThreadControlRequested          WebhookEventType = "chat.thread_control_requested"
 	EventMessageTemplateStatusUpdated        WebhookEventType = "message_template.status_updated"
 	EventMessageTemplateCategoryUpdated      WebhookEventType = "message_template.category_updated"
 	EventPlacementNameStatusUpdated          WebhookEventType = "placement.name_status_updated"
@@ -322,6 +334,7 @@ var WebhookEventTypes = []WebhookEventType{
 	EventProfileCommentCreated,
 	EventProfileCommentFailed,
 	EventProfileCommentFailedWaitingForRetry,
+	EventProfileCommentEdited,
 	EventProfileCommentDeleted,
 	EventMessageReceived,
 	EventMessageSent,
@@ -333,6 +346,8 @@ var WebhookEventTypes = []WebhookEventType{
 	EventMessageFailed,
 	EventReactionReceived,
 	EventReferralReceived,
+	EventChatThreadControlChanged,
+	EventChatThreadControlRequested,
 	EventMessageTemplateStatusUpdated,
 	EventMessageTemplateCategoryUpdated,
 	EventPlacementNameStatusUpdated,
